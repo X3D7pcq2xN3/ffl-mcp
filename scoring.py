@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 # Yahoo's stat_id values are stable across seasons for football.
 STAT_ID_MAP: dict[int, str] = {
     # Passing
+    2: "pass_cmp",
     4: "pass_yd",
     5: "pass_td",
     6: "pass_int",
