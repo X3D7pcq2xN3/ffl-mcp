@@ -142,3 +142,9 @@ if __name__ == "__main__":
         churn = " (also dropping)" if drops.get(sid, 0) >= MIN_ADD_COUNT else ""
         print(f"  {count:>7}  {name:24} {p.get('position','?'):4}"
               f"{p.get('team') or 'FA':4}{churn}")
+
+    print("\ntop drops (24h):")
+    for sid, count in list(sorted(drops.items(), key=lambda kv: kv[1], reverse=True))[:10]:
+        p = sl.get(sid, {})
+        name = (p.get("full_name") or f"{p.get('first_name','')} {p.get('last_name','')}".strip() or sid)
+        print(f"  {count:>7}  {name:24} {p.get('position','?'):4}{p.get('team') or 'FA':4}")
