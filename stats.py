@@ -39,26 +39,29 @@ FANTASY_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
 USAGE_KEYS = ("off_snp", "tm_off_snp", "rec_tgt", "rush_att")
 
 
-def fetch_stats(
+def fetch_stat_records(
     season: int | str,
     week: int,
     positions: tuple[str, ...] = FANTASY_POSITIONS,
     force: bool = False,
-) -> dict[str, dict]:
-    """Return {sleeper_player_id: stat_line} of actuals for a completed week.
+) -> list[dict]:
+    """Return normalized actual-stat records for a completed week.
 
-    Mirrors projections.fetch_projections: one position per request, merged,
-    cached on disk. A week with no games yet returns an empty stat line per
-    player, which the usage math below simply contributes nothing from.
+    Each record is {player_id, team, opponent, position, stats}. Mirrors
+    projections.fetch_projections in shape: one position per request, merged,
+    cached on disk. Keeping team and opponent -- which the /stats record
+    carries -- is what lets defense.py attribute the points a position scored
+    to the defense that allowed them. Position is the one we queried, so it
+    needs no guessing from the record's player subobject.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache = CACHE_DIR / f"stats_{season}_{week}.json"
+    cache = CACHE_DIR / f"statrecs_{season}_{week}.json"
 
     if not force and cache.exists():
         if time.time() - cache.stat().st_mtime < CACHE_TTL_SECONDS:
             return json.loads(cache.read_text())
 
-    merged: dict[str, dict] = {}
+    records: list[dict] = []
     url = STATS_URL.format(season=season, week=week)
 
     for pos in positions:
@@ -80,13 +83,35 @@ def fetch_stats(
             if not isinstance(rec, dict):
                 continue
             pid = str(rec.get("player_id") or rec.get("id") or "")
-            stats = rec.get("stats") or {}
-            if pid and stats:
-                merged[pid] = stats
+            stat_line = rec.get("stats") or {}
+            if not pid or not stat_line:
+                continue
+            records.append({
+                "player_id": pid,
+                "team": rec.get("team"),
+                "opponent": rec.get("opponent"),
+                "position": pos,
+                "stats": stat_line,
+            })
 
-    if merged:
-        cache.write_text(json.dumps(merged))
-    return merged
+    if records:
+        cache.write_text(json.dumps(records))
+    return records
+
+
+def fetch_stats(
+    season: int | str,
+    week: int,
+    positions: tuple[str, ...] = FANTASY_POSITIONS,
+    force: bool = False,
+) -> dict[str, dict]:
+    """Return {sleeper_player_id: stat_line} of actuals for a completed week.
+
+    A thin projection over fetch_stat_records for callers that only need the
+    stat lines keyed by id (usage()); a week with no games yet is an empty map.
+    """
+    return {r["player_id"]: r["stats"]
+            for r in fetch_stat_records(season, week, positions, force)}
 
 
 def _team_targets(week_stats: dict[str, dict],

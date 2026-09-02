@@ -56,12 +56,14 @@ Reason ONLY from the data in the payload. You are given projections, roster
 slots, injury designations, injury detail (body part and practice
 participation), depth-chart order, recent usage (snap share, target share,
 targets and carries per game over the last few weeks), a rest-of-season
-outlook (projected points through season's end), bye weeks, and ownership
-percentages. You are NOT given matchup quality, defensive rankings, or
-weather. Do not invent them. An opponent abbreviation is identification,
-not evidence -- never argue a player is favored or disadvantaged by their
-opponent. If a recommendation would need information you do not have, say
-what would settle it instead of guessing.
+outlook (projected points through season's end), an opponent defense-vs-
+position matchup (points the opponent allows to the player's position, with a
+rank), bye weeks, and ownership percentages. You are NOT given weather, Vegas
+point totals or spreads, or game pace. Do not invent them. Judge a matchup
+ONLY from the defense-vs-position data provided -- an opponent abbreviation is
+otherwise just identification, and your own memory of how good a team is does
+not count as evidence. If a recommendation would need information you do not
+have, say what would settle it instead of guessing.
 
 Depth-chart order ("depth") is a player's rank at their position on their own
 team; 1 is the starter. It is role context, not a projection: a player who
@@ -94,6 +96,15 @@ low ros_ppg is a lasting problem where a low weekly number may be noise. Use
 ros to compare who to keep; use the weekly projection to decide who starts.
 Do not mix them -- a strong ros does not make a benched player a start this
 week, and a weak week does not make a high-ros player a drop.
+
+Matchup ("matchup") is the opponent's defense-vs-position: pa_pg is the points
+that opponent allows to this player's position per game, and rank is where
+that sits among defenses -- rank 1 of "of" allows the most, so a low rank is a
+soft matchup and a high rank a tough one. It is computed from past weeks under
+this league's scoring; the "weeks" count on it says how many, and a small
+count early in the season is weak signal, not proof. Use it to break a close
+start/sit or to pick between streamers, never to override a projection gap that
+already clears the noise. It is not a projection and is never added to one.
 
 Do not assume a player's gender. Use the player's name or "they".
 
@@ -193,6 +204,10 @@ class Player:
     # projections through season's end, scored under league rules. The datum a
     # single week can't give -- the basis for a keep-or-drop call.
     ros: dict | None = None
+    # Opponent defense-vs-position from defense.matchup: points the opponent
+    # allows to this position per game and its rank among defenses. The one
+    # honest matchup signal from public data; context, not a projection.
+    matchup: dict | None = None
 
     def to_dict(self) -> dict:
         d = {"name": self.name, "pos": self.position,
@@ -223,6 +238,8 @@ class Player:
             d["usage"] = self.usage
         if self.ros:
             d["ros"] = self.ros
+        if self.matchup:
+            d["matchup"] = self.matchup
         return d
 
 
@@ -386,10 +403,13 @@ def build_payload(week: int, starters: list[Player], bench: list[Player],
             "carries/game (last few completed weeks)",
             "rest-of-season outlook: projected points through season's end "
             "(ros_points) and per-week rate (ros_ppg)",
+            "opponent defense-vs-position: points the opponent allows to this "
+            "position per game (pa_pg) and its rank among defenses (rank 1 "
+            "of 'of' allows the most)",
             "bye weeks", "ownership percentage",
         ],
         "data_NOT_provided": [
-            "matchup quality", "defensive rankings", "weather",
+            "weather", "Vegas point totals or spreads", "game pace or script",
         ],
         "lineup": [p.to_dict() for p in starters],
         "bench": [p.to_dict() for p in bench],
@@ -494,9 +514,12 @@ def demo() -> tuple:
                usage={"weeks": 3, "snap_pct": 0.78, "snap_trend": [0.75, 0.79, 0.8],
                       "carries_pg": 16.3, "target_share": 0.11, "targets_pg": 3.7}),
         Player("Runner B", "RB", "RB", 6.1, on_bye=True),
+        # Tough matchup but a projection that clears the noise anyway -- the
+        # matchup should not talk the model out of an easy start.
         Player("Catcher A", "WR", "WR", 15.8, opponent="@GB",
                usage={"weeks": 3, "snap_pct": 0.9, "snap_trend": [0.88, 0.91, 0.91],
-                      "target_share": 0.28, "targets_pg": 9.7}),
+                      "target_share": 0.28, "targets_pg": 9.7},
+               matchup={"vs": "GB", "pos": "WR", "pa_pg": 22.0, "rank": 30, "of": 32}),
         Player("Catcher B", "WR", "WR", 9.2, status="Q", opponent="vs NYJ",
                injury_body_part="Hamstring", practice="DNP"),
         Player("Tight A", "TE", "TE", 7.7, opponent="@MIA"),
@@ -508,9 +531,11 @@ def demo() -> tuple:
                ros={"ros_points": 61.0, "weeks": 12, "ros_ppg": 5.1}),
     ]
     bench = [
-        # A one-week dip on a clear keeper: weak this week, strong outlook.
+        # A one-week dip on a clear keeper, into a soft matchup: weak
+        # projection this week, strong outlook, opponent generous to WRs.
         Player("Catcher C", "WR", None, 11.9, opponent="vs CHI",
-               ros={"ros_points": 186.0, "weeks": 12, "ros_ppg": 15.5}),
+               ros={"ros_points": 186.0, "weeks": 12, "ros_ppg": 15.5},
+               matchup={"vs": "CHI", "pos": "WR", "pa_pg": 41.0, "rank": 3, "of": 32}),
         Player("Runner D", "RB", None, 4.2, opponent="@BUF", depth_chart_order=3,
                ros={"ros_points": 33.0, "weeks": 11, "ros_ppg": 3.0}),
         Player("Tight B", "TE", None, 8.9, opponent="vs DEN"),
@@ -522,7 +547,8 @@ def demo() -> tuple:
                depth_chart_order=1, depth_chart_position="RB",
                usage={"weeks": 3, "snap_pct": 0.41, "snap_trend": [0.18, 0.35, 0.7],
                       "carries_pg": 9.0}),
-        Player("FA Wide", "WR", None, 8.1, owned_pct=12),
+        Player("FA Wide", "WR", None, 8.1, owned_pct=12, opponent="vs CAR",
+               matchup={"vs": "CAR", "pos": "WR", "pa_pg": 38.0, "rank": 5, "of": 32}),
         Player("FA End", "TE", None, 9.6, owned_pct=44, on_waivers=True),
         Player("FA Scrub", "RB", None, 2.0, owned_pct=1),
     ]

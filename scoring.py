@@ -51,13 +51,20 @@ STAT_ID_MAP: dict[int, str] = {
     35: "def_td",
     36: "safe",
     37: "blk_kick",
-    50: "pts_allow",
     57: "yds_allow",
 }
 
-# Yahoo expresses some categories as a bracket with a single point value
-# (e.g. "points allowed 0" is worth 10). Those arrive as separate stat_ids
-# and are handled by the caller supplying pts_allow directly.
+# Team points-allowed is not linear: Yahoo scores it in seven brackets, each a
+# separate stat_id carrying the points its range is worth. The ranges are
+# Yahoo's fixed NFL brackets (0, 1-6, 7-13, 14-20, 21-27, 28-34, 35+); the
+# value is the league's. parse_league_settings routes these stat_ids into
+# ScoringRules.pts_allow_tiers, which score() applies to a defense's projected
+# or actual "pts_allow" total. stat_id 50 (the "0 allowed" bracket) is here
+# rather than in STAT_ID_MAP for that reason -- scored linearly it would be
+# systematically wrong.
+YAHOO_PTS_ALLOW_TIERS: dict[int, float] = {  # stat_id -> inclusive upper bound
+    50: 0, 51: 6, 52: 13, 53: 20, 54: 27, 55: 34, 56: float("inf"),
+}
 
 
 @dataclass
@@ -66,14 +73,34 @@ class ScoringRules:
 
     per_unit: dict[str, float] = field(default_factory=dict)
     unmapped: list[dict] = field(default_factory=list)
+    # Team points-allowed is bracketed, not linear: a defense scores the value
+    # of the range its points-allowed total falls in. Sorted (upper_bound,
+    # points), applied to the "pts_allow" stat. Empty for leagues without DST
+    # points-allowed scoring, in which case defenses score only their countable
+    # events (sacks, takeaways, TDs).
+    pts_allow_tiers: list[tuple[float, float]] = field(default_factory=list)
+
+    def _pts_allowed_points(self, stats: dict[str, float]) -> float:
+        """Bracket points for a defense's points-allowed total, or 0."""
+        if not self.pts_allow_tiers or "pts_allow" not in stats:
+            return 0.0
+        pa = float(stats["pts_allow"])
+        for upper, points in self.pts_allow_tiers:
+            if pa <= upper:
+                return points
+        return 0.0
 
     def score(self, stats: dict[str, float]) -> float:
         """Apply the rules to one projected stat line."""
         total = 0.0
         for key, value in stats.items():
+            # pts_allow is scored by bracket below, never linearly.
+            if key == "pts_allow" and self.pts_allow_tiers:
+                continue
             weight = self.per_unit.get(key)
             if weight and value:
                 total += float(value) * weight
+        total += self._pts_allowed_points(stats)
         return round(total, 2)
 
     def breakdown(self, stats: dict[str, float]) -> list[tuple[str, float, float, float]]:
@@ -84,10 +111,17 @@ class ScoringRules:
         """
         rows = []
         for key, value in stats.items():
+            if key == "pts_allow" and self.pts_allow_tiers:
+                continue
             weight = self.per_unit.get(key)
             if weight and value:
                 rows.append((key, float(value), weight,
                              round(float(value) * weight, 2)))
+        if self.pts_allow_tiers and "pts_allow" in stats:
+            # No linear weight -- the points come from the bracket, so report
+            # the bracket's value in the points column and label the weight.
+            rows.append(("pts_allow", float(stats["pts_allow"]), "bracket",
+                         round(self._pts_allowed_points(stats), 2)))
         rows.sort(key=lambda r: abs(r[3]), reverse=True)
         return rows
 
@@ -119,12 +153,21 @@ def parse_league_settings(settings: dict) -> ScoringRules:
     if isinstance(raw, dict) and "stats" in raw:
         raw = raw["stats"]
 
+    tiers: list[tuple[float, float]] = []
+
     for entry in raw:
         stat = entry.get("stat", entry) if isinstance(entry, dict) else {}
         try:
             stat_id = int(stat.get("stat_id"))
             value = float(stat.get("value"))
         except (TypeError, ValueError):
+            continue
+
+        # Points-allowed brackets are recorded even when worth zero (the 21-27
+        # bracket commonly is): dropping a zero tier would leave a hole the
+        # score walk falls through. So handle tiers before the zero-skip.
+        if stat_id in YAHOO_PTS_ALLOW_TIERS:
+            tiers.append((YAHOO_PTS_ALLOW_TIERS[stat_id], value))
             continue
 
         if value == 0:
@@ -138,6 +181,7 @@ def parse_league_settings(settings: dict) -> ScoringRules:
         # Two Yahoo ids map to def_td; sum rather than overwrite.
         rules.per_unit[key] = rules.per_unit.get(key, 0.0) + value
 
+    rules.pts_allow_tiers = sorted(tiers)  # ascending upper bound; inf last
     return rules
 
 
