@@ -37,6 +37,7 @@ holds league settings and player identifiers.
 | `stats.py` | Fetches actual weekly stats from Sleeper and computes recent usage (snap share, target share, targets/carries per game) |
 | `defense.py` | Builds opponent defense-vs-position (points allowed to each position, ranked) from Sleeper box scores, scored under league rules |
 | `validate_scoring.py` | Verifies the scoring map against Sleeper's own computed point totals |
+| `coverage.py` | Reports which of a league's scored categories the projections cover, and which scorable categories go uncounted |
 
 ## Yahoo endpoints used
 
