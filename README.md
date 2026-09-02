@@ -31,9 +31,9 @@ holds league settings and player identifiers.
 
 | Module | Purpose |
 | --- | --- |
-| `players.py` | Yahoo ↔ Sleeper player ID crosswalk with name/team normalization |
+| `players.py` | Yahoo ↔ Sleeper player ID crosswalk with name/team normalization, plus role/injury detail and injury-status classification (out / shelved) |
 | `scoring.py` | Translates Yahoo league scoring settings into a scoring function |
-| `projections.py` | Fetches weekly projections from Sleeper's public API, and a rest-of-season outlook scored under league rules |
+| `projections.py` | Fetches weekly projections from Sleeper's public API, and a rest-of-season outlook scored under league rules (zeroed for players on IR/PUP whose weekly projections go stale) |
 | `stats.py` | Fetches actual weekly stats from Sleeper and computes recent usage (snap share, target share, targets/carries per game) |
 | `defense.py` | Builds opponent defense-vs-position (points allowed to each position, ranked) from Sleeper box scores, scored under league rules |
 | `validate_scoring.py` | Verifies the scoring map against Sleeper's own computed point totals |

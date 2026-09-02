@@ -116,6 +116,49 @@ DETAIL_KEYS = (
 )
 
 
+# Injury designations that take a player off the field, in both Sleeper's long
+# spellings ("Out", "Questionable") and the short codes a Yahoo roster uses
+# ("O", "Q"). Two tiers, because they fail differently:
+#
+#   SHELF -- multi-week unavailability (IR, PUP, NFI, suspension). This is the
+#   tier that breaks a projection: Sleeper keeps projecting a PUP player it
+#   should be zeroing, so a rest-of-season SUM built on those weeks is fiction.
+#   A Charbonnet on PUP with an ACL still shows ~50 ROS points he cannot score.
+#
+#   WEEKLY_OUT -- out this week but expected back ("Out"). A weekly projection
+#   already reflects this by going low on its own, so it needs no special
+#   handling in a season sum; it only excludes the player from this week.
+#
+# Questionable and Doubtful are deliberately in NEITHER set: they are game-time
+# calls the model weighs from the injury detail, not hard exclusions.
+SHELF_STATUSES = frozenset({"IR", "PUP", "NFI", "NA", "SUS", "SUSP", "DNR", "COV"})
+WEEKLY_OUT_STATUSES = frozenset({"O", "OUT"})
+_UNAVAILABLE = SHELF_STATUSES | WEEKLY_OUT_STATUSES
+
+
+def normalize_status(status: str | None) -> str:
+    """A status string folded to the case-insensitive form the sets use."""
+    return (status or "").strip().upper()
+
+
+def is_shelved(status: str | None) -> bool:
+    """True for multi-week unavailability (IR/PUP/NFI/suspension).
+
+    This is the status that makes a weekly projection stale, so it is what a
+    rest-of-season outlook must zero rather than trust.
+    """
+    return normalize_status(status) in SHELF_STATUSES
+
+
+def is_unavailable(status: str | None) -> bool:
+    """True when a player cannot play now: shelved, or a hard weekly Out.
+
+    Questionable and Doubtful are excluded on purpose -- they are game-time
+    calls, not reasons to bench a player or drop him from a candidate list.
+    """
+    return normalize_status(status) in _UNAVAILABLE
+
+
 def player_details(record: dict) -> dict:
     """Role and injury detail from a Sleeper /players/nfl record.
 
