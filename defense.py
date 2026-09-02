@@ -11,12 +11,14 @@ the /stats record carries both the player's team and his opponent. The number
 is backward-looking and small early in the season, so it is context to break a
 close call or pick a streamer -- never a projection, and never added to one.
 
-Team defense (DST) is deliberately excluded. Yahoo scores points-allowed in
-tiers (0 allowed is worth one flat amount, 1-6 another), which ScoringRules
-models as a flat per-point weight; a DST's scored line -- and any
-defense-vs-DST number built from it -- would therefore be systematically
-wrong. Skill positions and kickers score cleanly from their stat lines, so
-those are what this computes.
+Team defense (DST) is deliberately excluded. Sleeper's /stats DEF query
+returns individual defenders, not the team-level line (no pts_allow, sacks, or
+takeaways at the team level), so there is nothing to attribute a defense-vs-
+DST number from -- the data simply is not there, whatever the scoring. (DST
+projections do carry a team line, and ScoringRules now scores its bracketed
+points-allowed correctly, so a defense's weekly projection is accurate; only
+this backward-looking table can't cover DST.) Skill positions and kickers have
+full stat lines, so those are what this computes.
 """
 
 from __future__ import annotations

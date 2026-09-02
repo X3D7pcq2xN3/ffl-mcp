@@ -134,10 +134,21 @@ def player_details(record: dict) -> dict:
     if dpos:
         out["depth_chart_position"] = dpos
 
+    # injury_status is the live designation; body part, notes, and practice
+    # participation are only meaningful alongside one. Sleeper couples them
+    # today (a body part never appears without a status), so this gate is
+    # hardening -- it keeps a stale detail from ever surfacing on its own if a
+    # source stops clearing it. A current status with an alarming body part
+    # (an ACL on a still-projected player) is real data, not staleness, and is
+    # passed through for the model to weigh.
+    status = record.get("injury_status")
     for key in DETAIL_KEYS:
         val = record.get(key)
-        if val:
-            out[key] = val
+        if not val:
+            continue
+        if key != "injury_status" and not status:
+            continue
+        out[key] = val
 
     return out
 
