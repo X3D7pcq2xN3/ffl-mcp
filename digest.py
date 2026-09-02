@@ -53,12 +53,26 @@ rules. Treat them as accurate. Do not recompute, re-rank by your own
 estimates, or substitute general player knowledge for the numbers provided.
 
 Reason ONLY from the data in the payload. You are given projections, roster
-slots, injury designations, bye weeks, and ownership percentages. You are NOT
-given matchup quality, defensive rankings, weather, snap counts, or target
-share. Do not invent them. An opponent abbreviation is identification, not
-evidence -- never argue a player is favored or disadvantaged by their
+slots, injury designations, injury detail (body part and practice
+participation), depth-chart order, bye weeks, and ownership percentages. You
+are NOT given matchup quality, defensive rankings, weather, snap counts, or
+target share. Do not invent them. An opponent abbreviation is identification,
+not evidence -- never argue a player is favored or disadvantaged by their
 opponent. If a recommendation would need information you do not have, say
 what would settle it instead of guessing.
+
+Depth-chart order ("depth") is a player's rank at their position on their own
+team; 1 is the starter. It is role context, not a projection: a player who
+has risen to 1 often beats a projection that has not caught up to the change,
+and a player sitting at 3 behind healthy starters is a bench body however
+tempting his number. Use it to weigh a claim or a start, never to override a
+projection you were given.
+
+Practice participation ("practice": DNP, Limited, Full) is the best available
+read on whether a Questionable player suits up: Full through the week points
+toward playing, DNP on the last days points toward sitting. Use it to set the
+Check block and the fallback, not to invent a projection for a player who
+sits.
 
 Do not assume a player's gender. Use the player's name or "they".
 
@@ -138,6 +152,14 @@ class Player:
     on_bye: bool = False
     owned_pct: float | None = None
     on_waivers: bool = False
+    # Role and injury detail from Sleeper's player dump (players.player_details).
+    # A projection lags a role change by days; depth-chart order does not.
+    # Injury detail turns a bare "Q" into a decidable call.
+    depth_chart_order: int | None = None  # rank at position on own team; 1 = starter
+    depth_chart_position: str = ""        # e.g. "RB", "LWR"
+    injury_body_part: str = ""            # e.g. "Hamstring"
+    practice: str = ""                    # DNP / Limited / Full
+    injury_notes: str = ""                # free text from the report
 
     def to_dict(self) -> dict:
         d = {"name": self.name, "pos": self.position,
@@ -154,6 +176,16 @@ class Player:
             d["owned_pct"] = round(self.owned_pct)
         if self.on_waivers:
             d["waivers"] = True
+        if self.depth_chart_order is not None:
+            d["depth"] = self.depth_chart_order
+        if self.depth_chart_position:
+            d["depth_pos"] = self.depth_chart_position
+        if self.injury_body_part:
+            d["injury"] = self.injury_body_part
+        if self.practice:
+            d["practice"] = self.practice
+        if self.injury_notes:
+            d["injury_notes"] = self.injury_notes
         return d
 
 
@@ -311,7 +343,9 @@ def build_payload(week: int, starters: list[Player], bench: list[Player],
         "data_provided": [
             "projections (computed under this league's scoring)",
             "roster slots and eligibility",
-            "injury status", "bye weeks", "ownership percentage",
+            "injury status", "injury detail (body part, practice participation)",
+            "depth-chart order and position",
+            "bye weeks", "ownership percentage",
         ],
         "data_NOT_provided": [
             "matchup quality", "defensive rankings", "weather",
@@ -419,17 +453,20 @@ def demo() -> tuple:
         Player("Runner A", "RB", "RB", 14.1, opponent="vs DAL"),
         Player("Runner B", "RB", "RB", 6.1, on_bye=True),
         Player("Catcher A", "WR", "WR", 15.8, opponent="@GB"),
-        Player("Catcher B", "WR", "WR", 9.2, status="Q", opponent="vs NYJ"),
+        Player("Catcher B", "WR", "WR", 9.2, status="Q", opponent="vs NYJ",
+               injury_body_part="Hamstring", practice="DNP"),
         Player("Tight A", "TE", "TE", 7.7, opponent="@MIA"),
         Player("Runner C", "RB", "W/R/T", 8.0, opponent="vs LAR"),
     ]
     bench = [
         Player("Catcher C", "WR", None, 11.9, opponent="vs CHI"),
-        Player("Runner D", "RB", None, 4.2, opponent="@BUF"),
+        Player("Runner D", "RB", None, 4.2, opponent="@BUF", depth_chart_order=3),
         Player("Tight B", "TE", None, 8.9, opponent="vs DEN"),
     ]
     free_agents = [
-        Player("FA Back", "RB", None, 10.4, owned_pct=31, on_waivers=True),
+        # A backup just promoted to RB1 -- the projection lags the role.
+        Player("FA Back", "RB", None, 10.4, owned_pct=31, on_waivers=True,
+               depth_chart_order=1, depth_chart_position="RB"),
         Player("FA Wide", "WR", None, 8.1, owned_pct=12),
         Player("FA End", "TE", None, 9.6, owned_pct=44, on_waivers=True),
         Player("FA Scrub", "RB", None, 2.0, owned_pct=1),
