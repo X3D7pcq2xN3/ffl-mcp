@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import requests
 
 import notify
+from players import is_unavailable
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 MODEL = "claude-sonnet-4-6"
@@ -95,7 +96,11 @@ projection is not: one bye or one soft week barely moves a season total, so a
 low ros_ppg is a lasting problem where a low weekly number may be noise. Use
 ros to compare who to keep; use the weekly projection to decide who starts.
 Do not mix them -- a strong ros does not make a benched player a start this
-week, and a weak week does not make a high-ros player a drop.
+week, and a weak week does not make a high-ros player a drop. An ros marked
+"shelved" (e.g. shelved: PUP) is a deliberate zero: the player is on IR or PUP
+and his weekly projections are stale, so his outlook is set to zero rather than
+a total he cannot earn. Read it as "unavailable, hold only for later," never as
+a player who has collapsed in value.
 
 Matchup ("matchup") is the opponent's defense-vs-position: pa_pg is the points
 that opponent allows to this player's position per game, and rank is where
@@ -182,7 +187,8 @@ class Player:
     projection: float
     team: str = ""
     opponent: str = ""
-    status: str = ""      # Q, D, O, IR, or empty
+    status: str = ""      # injury designation: Q/D/O/IR/PUP/... (Sleeper or
+                          # Yahoo spelling); players.is_unavailable classifies it
     on_bye: bool = False
     owned_pct: float | None = None
     on_waivers: bool = False
@@ -282,7 +288,7 @@ def find_start_sit(starters: list[Player], bench: list[Player],
     """
     findings = []
     for benched in bench:
-        if benched.on_bye or benched.status in ("O", "IR"):
+        if benched.on_bye or is_unavailable(benched.status):
             continue
         for starter in starters:
             if starter.projection >= benched.projection:
@@ -292,7 +298,7 @@ def find_start_sit(starters: list[Player], bench: list[Player],
                 continue
 
             gain = benched.projection - starter.projection
-            unavailable = starter.on_bye or starter.status in ("O", "IR")
+            unavailable = starter.on_bye or is_unavailable(starter.status)
             if gain < min_gain and not unavailable:
                 continue
 
@@ -315,7 +321,7 @@ def find_holes(starters: list[Player]) -> list[dict]:
         reason = None
         if p.on_bye:
             reason = "bye"
-        elif p.status in ("O", "IR"):
+        elif is_unavailable(p.status):
             reason = f"out ({p.status})"
         elif p.projection < 1.0:
             reason = "no projection"
@@ -334,10 +340,18 @@ def rank_candidates(free_agents: list[Player],
     Beating your worst bench player by a point is not a reason to spend a
     waiver claim, so anything under min_gain is dropped before the model
     sees it.
+
+    A free agent who cannot play -- out, on IR, or on PUP -- is never a
+    candidate, however high his stale weekly projection reads: recommending a
+    claim on a player the injury report has shelved is exactly the mistake a
+    projection-only ranker makes (a PUP running back still projected for points
+    outranking a healthy bench player). Unavailable free agents are dropped
+    before ranking, and unavailable roster players are left out of the floor so
+    the bar is set by a player you can actually start.
     """
     worst_by_pos: dict[str, float] = {}
     for p in roster:
-        if p.on_bye or p.status in ("O", "IR"):
+        if p.on_bye or is_unavailable(p.status):
             continue
         cur = worst_by_pos.get(p.position)
         if cur is None or p.projection < cur:
@@ -345,6 +359,8 @@ def rank_candidates(free_agents: list[Player],
 
     by_pos: dict[str, list[Player]] = {}
     for fa in free_agents:
+        if is_unavailable(fa.status):
+            continue
         floor = worst_by_pos.get(fa.position)
         if floor is None or fa.projection - floor < min_gain:
             continue
@@ -551,6 +567,14 @@ def demo() -> tuple:
                matchup={"vs": "CAR", "pos": "WR", "pa_pg": 38.0, "rank": 5, "of": 32}),
         Player("FA End", "TE", None, 9.6, owned_pct=44, on_waivers=True),
         Player("FA Scrub", "RB", None, 2.0, owned_pct=1),
+        # On PUP with a high, STALE weekly projection -- Sleeper never zeroed
+        # him. Without the injury gate this outranks every healthy RB above and
+        # gets recommended as a claim; with it he is dropped from candidates and
+        # his rest-of-season sum is flagged shelved rather than trusted.
+        Player("FA Shelf", "RB", None, 12.5, owned_pct=53, status="PUP",
+               injury_body_part="Knee - ACL", injury_notes="Surgery",
+               depth_chart_order=4,
+               ros={"ros_points": 0.0, "weeks": 0, "shelved": "PUP"}),
     ]
     scoring = {"rec": 0.5, "rec_yd": 0.1, "rush_yd": 0.1}
     return starters, bench, free_agents, scoring

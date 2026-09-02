@@ -17,6 +17,7 @@ from pathlib import Path
 
 import requests
 
+from players import is_shelved
 from scoring import STAT_ID_MAP, ScoringRules
 
 PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
@@ -97,6 +98,7 @@ def rest_of_season(
     positions: tuple[str, ...] = FANTASY_POSITIONS,
     last_week: int = SEASON_LAST_WEEK,
     force: bool = False,
+    sleeper_players: dict[str, dict] | None = None,
 ) -> dict[str, dict]:
     """Each player's remaining-season outlook, scored under league rules.
 
@@ -111,6 +113,15 @@ def rest_of_season(
     so a bye ahead does not drag the rate down. Weeks are summed from the same
     Sleeper projections and scoring map the weekly digest already uses, so the
     outlook is consistent with the weekly numbers rather than a second source.
+
+    Pass `sleeper_players` (the /players/nfl dump) to gate the sum on injury
+    status. Sleeper keeps projecting players it has shelved -- a PUP or IR
+    player recovering from surgery still carries a full slate of weekly
+    projections -- so summing them yields a rest-of-season number the player
+    cannot possibly earn. When the dump is supplied, a shelved player's outlook
+    is returned zeroed and flagged {ros_points: 0.0, weeks: 0, shelved: <status>}
+    instead of the fictitious total, so a keep-or-drop call is not made on a
+    number the injury report already contradicts.
     """
     weeks = range(int(from_week), int(last_week) + 1)
     totals: dict[str, float] = {}
@@ -124,8 +135,20 @@ def rest_of_season(
             if pts > 0:
                 counts[pid] = counts.get(pid, 0) + 1
 
+    # Sleeper ids the injury report has shelved -- their projected weeks are
+    # stale and must not be trusted in a season sum. Looked up once here.
+    shelved: dict[str, str] = {}
+    if sleeper_players:
+        for pid in totals:
+            status = (sleeper_players.get(str(pid)) or {}).get("injury_status")
+            if is_shelved(status):
+                shelved[pid] = status
+
     out: dict[str, dict] = {}
     for pid, pts in totals.items():
+        if pid in shelved:
+            out[pid] = {"ros_points": 0.0, "weeks": 0, "shelved": shelved[pid]}
+            continue
         games = counts.get(pid, 0)
         rec: dict = {"ros_points": round(pts, 1), "weeks": games}
         if games:
