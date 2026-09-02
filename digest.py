@@ -54,9 +54,11 @@ estimates, or substitute general player knowledge for the numbers provided.
 
 Reason ONLY from the data in the payload. You are given projections, roster
 slots, injury designations, injury detail (body part and practice
-participation), depth-chart order, bye weeks, and ownership percentages. You
-are NOT given matchup quality, defensive rankings, weather, snap counts, or
-target share. Do not invent them. An opponent abbreviation is identification,
+participation), depth-chart order, recent usage (snap share, target share,
+targets and carries per game over the last few weeks), a rest-of-season
+outlook (projected points through season's end), bye weeks, and ownership
+percentages. You are NOT given matchup quality, defensive rankings, or
+weather. Do not invent them. An opponent abbreviation is identification,
 not evidence -- never argue a player is favored or disadvantaged by their
 opponent. If a recommendation would need information you do not have, say
 what would settle it instead of guessing.
@@ -74,6 +76,25 @@ toward playing, DNP on the last days points toward sitting. Use it to set the
 Check block and the fallback, not to invent a projection for a player who
 sits.
 
+Recent usage ("usage") is what a player actually did over the last few
+completed weeks: snap_pct and target_share are fractions of his team's total;
+snap_trend lists per-week snap share oldest-first, so a rising or falling role
+is visible; targets_pg and carries_pg are per game. It is backward-looking
+fact, not a forecast. Use it to judge whether a projection or a trending add
+reflects a real role: a rising snap_trend behind a good projection is
+confirmation; a strong projection on a player whose snap share is low and
+falling is a reason for caution. Never treat usage as a projection or add it
+to one -- the projection already accounts for expected volume.
+
+Rest-of-season outlook ("ros") is projected points from this week through
+season's end (ros_points), with a per-week rate (ros_ppg) over the weeks the
+player is projected to play. It is the keep-or-drop datum the weekly
+projection is not: one bye or one soft week barely moves a season total, so a
+low ros_ppg is a lasting problem where a low weekly number may be noise. Use
+ros to compare who to keep; use the weekly projection to decide who starts.
+Do not mix them -- a strong ros does not make a benched player a start this
+week, and a weak week does not make a high-ros player a drop.
+
 Do not assume a player's gender. Use the player's name or "they".
 
 The payload lists the league's starting slots. Every lineup change you
@@ -86,12 +107,14 @@ Your job is judgment on top of the numbers:
 - Does an injury designation or bye change the call?
 - Is a waiver claim worth spending when the upgrade is marginal?
 
-You are given ONE week of projections. That is enough to decide who starts
-this week. It is not enough to decide who to cut: a low weekly projection may
-be a bye, an injury, or a bad week for a player worth keeping. Recommend a
+A weekly projection decides who starts; it does not decide who to cut, because
+a low week may be a bye, an injury, or one bad matchup for a player worth
+keeping. The rest-of-season outlook is what decides keep-or-drop. Recommend a
 DROP only when the payload gives a reason beyond a single week's number, and
-name that reason. Otherwise, when an add requires a corresponding drop, say
-the roster spot has to come from somewhere and leave the choice to me.
+name that reason: a low rest-of-season outlook, or a snap or target share that
+is both low and falling -- a lost role rather than one bad week. Even then,
+when an add requires a corresponding drop, name the weakest keeps by their
+season outlook but leave the final cut to me.
 
 Report every item you would act on yourself. There is no minimum and no
 maximum. Some weeks the right answer is one line saying the lineup is set;
@@ -160,6 +183,16 @@ class Player:
     injury_body_part: str = ""            # e.g. "Hamstring"
     practice: str = ""                    # DNP / Limited / Full
     injury_notes: str = ""                # free text from the report
+    # Recent actual usage from Sleeper box scores (stats.usage): snap share,
+    # target share, targets and carries per game over the last few weeks.
+    # Backward-looking fact, not a projection -- it confirms a role the
+    # projection may still lag. Held as the dict stats.usage() returns so this
+    # module stays decoupled from its exact keys.
+    usage: dict | None = None
+    # Rest-of-season outlook from projections.rest_of_season: summed weekly
+    # projections through season's end, scored under league rules. The datum a
+    # single week can't give -- the basis for a keep-or-drop call.
+    ros: dict | None = None
 
     def to_dict(self) -> dict:
         d = {"name": self.name, "pos": self.position,
@@ -186,6 +219,10 @@ class Player:
             d["practice"] = self.practice
         if self.injury_notes:
             d["injury_notes"] = self.injury_notes
+        if self.usage:
+            d["usage"] = self.usage
+        if self.ros:
+            d["ros"] = self.ros
         return d
 
 
@@ -345,11 +382,14 @@ def build_payload(week: int, starters: list[Player], bench: list[Player],
             "roster slots and eligibility",
             "injury status", "injury detail (body part, practice participation)",
             "depth-chart order and position",
+            "recent usage: snap share, target share, targets/game, "
+            "carries/game (last few completed weeks)",
+            "rest-of-season outlook: projected points through season's end "
+            "(ros_points) and per-week rate (ros_ppg)",
             "bye weeks", "ownership percentage",
         ],
         "data_NOT_provided": [
             "matchup quality", "defensive rankings", "weather",
-            "snap counts", "target share", "recent form",
         ],
         "lineup": [p.to_dict() for p in starters],
         "bench": [p.to_dict() for p in bench],
@@ -450,23 +490,38 @@ def demo() -> tuple:
     """
     starters = [
         Player("Passer A", "QB", "QB", 18.4, opponent="@SF"),
-        Player("Runner A", "RB", "RB", 14.1, opponent="vs DAL"),
+        Player("Runner A", "RB", "RB", 14.1, opponent="vs DAL",
+               usage={"weeks": 3, "snap_pct": 0.78, "snap_trend": [0.75, 0.79, 0.8],
+                      "carries_pg": 16.3, "target_share": 0.11, "targets_pg": 3.7}),
         Player("Runner B", "RB", "RB", 6.1, on_bye=True),
-        Player("Catcher A", "WR", "WR", 15.8, opponent="@GB"),
+        Player("Catcher A", "WR", "WR", 15.8, opponent="@GB",
+               usage={"weeks": 3, "snap_pct": 0.9, "snap_trend": [0.88, 0.91, 0.91],
+                      "target_share": 0.28, "targets_pg": 9.7}),
         Player("Catcher B", "WR", "WR", 9.2, status="Q", opponent="vs NYJ",
                injury_body_part="Hamstring", practice="DNP"),
         Player("Tight A", "TE", "TE", 7.7, opponent="@MIA"),
-        Player("Runner C", "RB", "W/R/T", 8.0, opponent="vs LAR"),
+        # Strong weekly projection but a role that is slipping -- usage is the
+        # caution, and the season outlook confirms it is fading, not dipping.
+        Player("Runner C", "RB", "W/R/T", 8.0, opponent="vs LAR",
+               usage={"weeks": 3, "snap_pct": 0.34, "snap_trend": [0.52, 0.33, 0.17],
+                      "carries_pg": 5.0},
+               ros={"ros_points": 61.0, "weeks": 12, "ros_ppg": 5.1}),
     ]
     bench = [
-        Player("Catcher C", "WR", None, 11.9, opponent="vs CHI"),
-        Player("Runner D", "RB", None, 4.2, opponent="@BUF", depth_chart_order=3),
+        # A one-week dip on a clear keeper: weak this week, strong outlook.
+        Player("Catcher C", "WR", None, 11.9, opponent="vs CHI",
+               ros={"ros_points": 186.0, "weeks": 12, "ros_ppg": 15.5}),
+        Player("Runner D", "RB", None, 4.2, opponent="@BUF", depth_chart_order=3,
+               ros={"ros_points": 33.0, "weeks": 11, "ros_ppg": 3.0}),
         Player("Tight B", "TE", None, 8.9, opponent="vs DEN"),
     ]
     free_agents = [
-        # A backup just promoted to RB1 -- the projection lags the role.
+        # A backup just promoted to RB1 -- projection lags the role, usage
+        # already shows the snap share climbing.
         Player("FA Back", "RB", None, 10.4, owned_pct=31, on_waivers=True,
-               depth_chart_order=1, depth_chart_position="RB"),
+               depth_chart_order=1, depth_chart_position="RB",
+               usage={"weeks": 3, "snap_pct": 0.41, "snap_trend": [0.18, 0.35, 0.7],
+                      "carries_pg": 9.0}),
         Player("FA Wide", "WR", None, 8.1, owned_pct=12),
         Player("FA End", "TE", None, 9.6, owned_pct=44, on_waivers=True),
         Player("FA Scrub", "RB", None, 2.0, owned_pct=1),

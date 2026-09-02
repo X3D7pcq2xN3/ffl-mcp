@@ -33,7 +33,8 @@ holds league settings and player identifiers.
 | --- | --- |
 | `players.py` | Yahoo ↔ Sleeper player ID crosswalk with name/team normalization |
 | `scoring.py` | Translates Yahoo league scoring settings into a scoring function |
-| `projections.py` | Fetches weekly projections from Sleeper's public API |
+| `projections.py` | Fetches weekly projections from Sleeper's public API, and a rest-of-season outlook scored under league rules |
+| `stats.py` | Fetches actual weekly stats from Sleeper and computes recent usage (snap share, target share, targets/carries per game) |
 | `validate_scoring.py` | Verifies the scoring map against Sleeper's own computed point totals |
 
 ## Yahoo endpoints used
