@@ -26,6 +26,10 @@ CACHE_TTL_SECONDS = 6 * 60 * 60
 
 FANTASY_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
 
+# Last week of the NFL regular season. A rest-of-season outlook runs from the
+# current week through here; fantasy playoffs sit inside this range.
+SEASON_LAST_WEEK = 18
+
 
 def current_state() -> dict:
     """Sleeper's own view of season and week -- avoids hardcoding either."""
@@ -84,6 +88,50 @@ def fetch_projections(
     if merged:
         cache.write_text(json.dumps(merged))
     return merged
+
+
+def rest_of_season(
+    season: int | str,
+    from_week: int,
+    scoring_rules: ScoringRules,
+    positions: tuple[str, ...] = FANTASY_POSITIONS,
+    last_week: int = SEASON_LAST_WEEK,
+    force: bool = False,
+) -> dict[str, dict]:
+    """Each player's remaining-season outlook, scored under league rules.
+
+    Sums the scored weekly projections from `from_week` through the season's
+    last week. This is the datum a single week cannot give: whether a player
+    is worth keeping. One bye or one soft week barely moves a season total, so
+    a rest-of-season number separates a temporary dip from a lost job in a way
+    a lone weekly projection never can.
+
+    Returns {sleeper_player_id: {ros_points, weeks, ros_ppg}} -- ros_ppg is
+    the per-week average over weeks the player is actually projected to play,
+    so a bye ahead does not drag the rate down. Weeks are summed from the same
+    Sleeper projections and scoring map the weekly digest already uses, so the
+    outlook is consistent with the weekly numbers rather than a second source.
+    """
+    weeks = range(int(from_week), int(last_week) + 1)
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+
+    for w in weeks:
+        proj = fetch_projections(season, w, positions, force)
+        for pid, stats in proj.items():
+            pts = scoring_rules.score(stats)
+            totals[pid] = totals.get(pid, 0.0) + pts
+            if pts > 0:
+                counts[pid] = counts.get(pid, 0) + 1
+
+    out: dict[str, dict] = {}
+    for pid, pts in totals.items():
+        games = counts.get(pid, 0)
+        rec: dict = {"ros_points": round(pts, 1), "weeks": games}
+        if games:
+            rec["ros_ppg"] = round(pts / games, 1)
+        out[pid] = rec
+    return out
 
 
 def validate_stat_keys(projections: dict[str, dict]) -> dict:
