@@ -102,6 +102,46 @@ def fetch_sleeper_players(force: bool = False) -> dict:
     return data
 
 
+# Fields worth surfacing from a /players/nfl record beyond the ID crosswalk.
+# All of these are already in the dump fetch_sleeper_players() caches, so
+# reading them costs no extra request: depth-chart order leads a projection
+# when a role changes, and injury detail separates a Q who plays from a Q who
+# sits. Kept here, next to the fetch, so the eventual roster assembler has one
+# place to pull "what Sleeper knows about this player" from a Sleeper id.
+DETAIL_KEYS = (
+    "injury_status",         # Questionable / Doubtful / Out / IR / PUP / Sus
+    "injury_body_part",      # e.g. "Hamstring"
+    "injury_notes",          # free text from the report
+    "practice_participation",  # DNP / Limited / Full
+)
+
+
+def player_details(record: dict) -> dict:
+    """Role and injury detail from a Sleeper /players/nfl record.
+
+    Returns only keys that carry a value, so a healthy front-line starter
+    contributes nothing but the fields that actually decide a lineup call.
+    Depth-chart order is the player's rank at their position on their own
+    team (1 is the starter); it is left out entirely when Sleeper has no
+    value for it rather than defaulted to a misleading number.
+    """
+    out: dict = {}
+
+    order = record.get("depth_chart_order")
+    if isinstance(order, int):
+        out["depth_chart_order"] = order
+    dpos = record.get("depth_chart_position")
+    if dpos:
+        out["depth_chart_position"] = dpos
+
+    for key in DETAIL_KEYS:
+        val = record.get(key)
+        if val:
+            out[key] = val
+
+    return out
+
+
 @dataclass
 class Crosswalk:
     """Maps Yahoo player_id -> Sleeper player_id."""
@@ -210,3 +250,10 @@ if __name__ == "__main__":
     print(f"unmatched: {cw.unmatched}")
     print(f"ambiguous: {cw.ambiguous}")
     print(f"rate:      {cw.match_rate:.0%}")
+
+    print("\nrole/injury detail for matched players:")
+    for yid, sid in cw.by_id.items():
+        rec = sl.get(sid, {})
+        name = (rec.get("full_name")
+                or f"{rec.get('first_name','')} {rec.get('last_name','')}".strip())
+        print(f"  {name:24} {player_details(rec)}")
