@@ -41,10 +41,12 @@ var CFG = {
   UNDRAFTED: '☐',        // still available
   TOKEN: 'CHANGE_ME',    // must equal the extension's token
   // A pick of yours that isn't on the board's player list still has to reach
-  // the My Team tab, so it's captured here (column K of the My Team tab).
+  // the My Team tab, so it's captured here. Column Q was verified empty on the
+  // My Team tab (the bye-week table occupies H:N; A:E is the roster spill), so
+  // this can't collide with an existing formula.
   OVERFLOW_SHEET: 'My Team + Byes',
-  OVERFLOW_COL: 11,      // column K
-  OVERFLOW_FIRST: 5,
+  OVERFLOW_COL: 17,      // column Q (verified empty)
+  OVERFLOW_FIRST: 4,     // row 3 holds the header the code writes
   OVERFLOW_LAST: 100
 };
 
@@ -173,6 +175,8 @@ function markDrafted(name, mine) {
 function _overflow(name) {
   var sh = SpreadsheetApp.getActive().getSheetByName(CFG.OVERFLOW_SHEET);
   if (!sh) return { ok: true, offboard: true, name: name };  // tab missing: no-op
+  var hdr = sh.getRange(CFG.OVERFLOW_FIRST - 1, CFG.OVERFLOW_COL);
+  if (!hdr.getValue()) hdr.setValue('Off-board picks (mine)');
   var n = CFG.OVERFLOW_LAST - CFG.OVERFLOW_FIRST + 1;
   var col = sh.getRange(CFG.OVERFLOW_FIRST, CFG.OVERFLOW_COL, n, 1).getValues();
   var want = _norm(name), free = -1;
