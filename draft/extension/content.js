@@ -2,11 +2,10 @@
  *
  * Two ways a pick reaches the sheet, by design:
  *
- *   1. AUTO — reads ESPN's own player table: each player's draft button flips
- *      to the disabled "Drafted" state (class Button--drafted) when taken, and
- *      that is the signal. See SEL below. ESPN's markup can change between
- *      seasons; if auto ever goes quiet, re-inspect a drafted row and update
- *      the three selectors in SEL.
+ *   1. AUTO — reads ESPN directly: the player table marks who's taken (→ ☑)
+ *      and the "My Team" roster panel marks your own picks (→ ★). See SEL
+ *      below. ESPN's markup can change between seasons; if auto goes quiet,
+ *      re-inspect and update the selectors in SEL.
  *
  *   2. MANUAL — a small panel (bottom-right) with a text box and a hotkey.
  *      Type or paste a name and Enter, or select a name anywhere on the page
@@ -20,41 +19,49 @@
 
 const api = (typeof browser !== 'undefined') ? browser : chrome;
 
-/* ---- ESPN selectors (confirmed against ESPN's live player table) --------
- * ESPN's player table gives each player a draft button that flips to the
- * disabled "Drafted" state (class Button--drafted) once that player is taken
- * -- by anyone. That button IS the drafted signal, so we read it rather than
- * hunt a separate pick feed: find each drafted button, walk up to its row, and
- * take the player name from that row. This also means loading mid-draft marks
- * everyone already taken (a free catch-up), and it never false-fires on
- * available players (their button is a different, enabled class).
+/* ---- ESPN selectors (confirmed against ESPN's live draft room) ----------
+ * TWO signals, because "taken" and "mine" are different questions:
+ *   TAKEN (anyone) -- a player's draft button flips to the disabled "Drafted"
+ *     state (Button--drafted). These become ☑ on the board.
+ *   MINE -- the "My Team" roster panel lists the players YOU drafted as
+ *     Table__TR rows; .player-column carries the full name in its `title`
+ *     (the link text is abbreviated, e.g. "J. Dart"). These become ★, which
+ *     is what the My Team + Byes tab filters on.
+ * A player you drafted appears in both, so ★ wins over ☑ -- push() upgrades.
  *
- * One caveat: keep ESPN's list on "All" players, not "Available only" -- if
- * drafted players are filtered out of the table their rows leave the DOM and
- * there's nothing to read. The manual box / Alt+D remain the fallback. */
+ * Two usage caveats:
+ *   - Keep ESPN's list on "All", not "Available only", or drafted rows leave
+ *     the table and can't be read as taken.
+ *   - Keep the roster panel showing YOUR team, not an opponent's, or their
+ *     players get tagged ★ as yours. */
 const SEL = {
   DRAFTED_BTN: 'button.Button--drafted',                       // a taken player's button
-  ROW: '.fixedDataTableCellGroupLayout_cellGroupWrapper',      // row holding button + name
-  NAME: '.playerinfo__playername'                              // holds ONLY the name
+  ROW: '.fixedDataTableCellGroupLayout_cellGroupWrapper',      // its row (holds button + name)
+  NAME: '.playerinfo__playername',                             // holds ONLY the name
+  MINE_ROW: 'tr.Table__TR',                                    // a "My Team" roster row
+  MINE_NAME: '.player-column[title]'                           // full name in its title attr
 };
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
-/* ---- de-dupe: a player is drafted once ---------------------------------- */
-const seen = new Set();
 function normKey(s) {
   return String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function send(name, info) {
+/* Push a mark, de-duped, with ★ (mine) allowed to upgrade ☑ (taken). A player
+ * you drafted appears in both the table (taken) and your roster (mine). */
+const sent = new Map();   // normKey -> 'mine' | 'taken'
+function push(name, mine) {
   const key = normKey(name);
-  if (!key || seen.has(key)) return;
-  seen.add(key);
-  setStatus(`sending: ${name}`);
-  api.runtime.sendMessage({ type: 'PICK', name: name, info: info || '' }).then((r) => {
-    if (!r)                 setStatus(`? ${name} — no reply`, 'warn');
-    else if (r.ok)          { bump(); setStatus(`✓ ${name} (row ${r.row}, ${r.match})`, 'ok'); }
-    else                    { seen.delete(key); setStatus(`✗ ${name} — ${r.error}`, 'err'); }
+  if (!key) return;
+  const cur = sent.get(key);
+  if (cur === 'mine') return;               // already the best state
+  if (cur === 'taken' && !mine) return;     // no change
+  sent.set(key, mine ? 'mine' : 'taken');
+  api.runtime.sendMessage({ type: 'PICK', name: name, mine: !!mine }).then((r) => {
+    if (!r)        setStatus(`? ${name} — no reply`, 'warn');
+    else if (r.ok) { if (cur === undefined) bump(); setStatus(`${mine ? '★' : '☑'} ${name} (row ${r.row})`, 'ok'); }
+    else           { sent.delete(key); setStatus(`✗ ${name} — ${r.error}`, 'err'); }
   });
 }
 
@@ -71,16 +78,21 @@ function nameForDraftedButton(btn) {
 function scanDrafted() {
   document.querySelectorAll(SEL.DRAFTED_BTN).forEach((btn) => {
     const name = nameForDraftedButton(btn);
-    if (name) send(name);   // send() de-dupes, so re-scanning is free
+    if (name) push(name, false);            // ☑ taken; upgrades to ★ if also mine
+  });
+  // MINE: roster-panel rows -- read the full name from the title attribute.
+  document.querySelectorAll(`${SEL.MINE_ROW} ${SEL.MINE_NAME}`).forEach((el) => {
+    const name = (el.getAttribute('title') || '').trim();
+    if (name.length >= 3) push(name, true); // ★ mine (wins over ☑)
   });
 }
 function startAuto() {
-  // Rows re-render as the table virtualizes and buttons flip to Drafted; a
-  // childList observer catches the re-renders, the interval catches pure class
-  // flips. send()'s `seen` set means repeats cost nothing.
+  // Rows re-render as the table virtualizes and buttons/rosters change; a
+  // childList observer catches re-renders, the interval catches pure class
+  // flips. push()'s state map means repeats cost nothing.
   new MutationObserver(scanDrafted).observe(document.body, { childList: true, subtree: true });
   setInterval(scanDrafted, RECONCILE_MS);
-  scanDrafted();   // catch up on everyone already drafted at load
+  scanDrafted();   // catch up on everyone already taken / rostered at load
 }
 
 /* ---- passive sidecar panel ---------------------------------------------- */
@@ -101,26 +113,26 @@ function panel() {
       '<div style="font-weight:600;margin-bottom:6px">fflDraft <span style="font-weight:400;color:#5f6368">· ESPN → Sheet</span></div>'
     + '<div id="ffld-status" style="min-height:16px;margin-bottom:6px">idle</div>'
     + '<div style="display:flex;gap:6px;margin-bottom:6px">'
-    + '  <input id="ffld-name" placeholder="mark a name…" style="flex:1;min-width:0;padding:4px 6px;border:1px solid #dadce0;border-radius:6px">'
-    + '  <button id="ffld-mark" style="padding:4px 8px;border:0;border-radius:6px;background:#1a73e8;color:#fff;cursor:pointer">Mark</button>'
+    + '  <input id="ffld-name" placeholder="mark MY pick…" style="flex:1;min-width:0;padding:4px 6px;border:1px solid #dadce0;border-radius:6px">'
+    + '  <button id="ffld-mark" style="padding:4px 8px;border:0;border-radius:6px;background:#1a73e8;color:#fff;cursor:pointer">★ Mine</button>'
     + '</div>'
     + '<div style="display:flex;justify-content:space-between;align-items:center;color:#5f6368">'
-    + '  <span>drafted: <b id="ffld-count">0</b></span>'
+    + '  <span>marked: <b id="ffld-count">0</b></span>'
     + '  <span><a id="ffld-reset" href="#" style="color:#c5221f;text-decoration:none">reset board</a></span>'
     + '</div>'
-    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text</div>';
+    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text as ★ mine</div>';
   document.body.appendChild(box);
   elStatus = box.querySelector('#ffld-status');
   elCount  = box.querySelector('#ffld-count');
   const input = box.querySelector('#ffld-name');
-  const mark = () => { const v = input.value.trim(); if (v) { send(v); input.value = ''; } };
+  const mark = () => { const v = input.value.trim(); if (v) { push(v, true); input.value = ''; } };
   box.querySelector('#ffld-mark').addEventListener('click', mark);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') mark(); });
   box.querySelector('#ffld-reset').addEventListener('click', (e) => {
     e.preventDefault();
     if (!confirm('Clear all drafted marks on the board?')) return;
     api.runtime.sendMessage({ type: 'RESET' }).then((r) => {
-      if (r && r.ok) { seen.clear(); count = 0; elCount.textContent = '0'; setStatus(`reset ${r.reset} rows`, 'ok'); }
+      if (r && r.ok) { sent.clear(); count = 0; elCount.textContent = '0'; setStatus(`reset ${r.reset} rows`, 'ok'); }
       else setStatus('reset failed: ' + ((r && r.error) || '?'), 'err');
     });
   });
@@ -136,7 +148,7 @@ function panel() {
 document.addEventListener('keydown', (e) => {
   if (e.altKey && (e.key === 'd' || e.key === 'D')) {
     const sel = String(window.getSelection());
-    if (sel && sel.trim()) { send(sel.trim()); e.preventDefault(); }
+    if (sel && sel.trim()) { push(sel.trim(), true); e.preventDefault(); }
   }
 });
 

@@ -21,12 +21,12 @@
  *   5. Re-deploy (Manage deployments > edit > new version) whenever you edit
  *      this file, or the old code keeps serving.
  *
- * How it marks: it sets the board's OWN "Drafted" dropdown (column A) to the
- * drafted value, and the sheet's conditional formatting strikes the row. This
- * is the board's native mechanism -- an extension pick looks identical to a
- * manual one, and reset just puts the dropdown back. (An earlier version struck
- * the name cell's font directly; that bypassed the dropdown and the row
- * formatting, so a pick and a manual mark disagreed.) Run resetDrafted() from
+ * How it marks: it sets the board's OWN "Drafted" dropdown (column A) --
+ * ★ for a pick of yours, ☑ for a player another team took -- and the sheet's
+ * conditional formatting strikes the row. ★ is what the My Team + Byes tab
+ * filters on, so only your picks land there. This is the board's native
+ * mechanism, so an extension mark looks identical to a manual one, and reset
+ * puts the dropdowns back to ☐. Run resetDrafted() from
  * the editor (or POST {action:"reset"}) to clear the board before a mock.
  */
 
@@ -36,8 +36,9 @@ var CFG = {
   LAST_ROW: 180,         // last player row
   NAME_COL: 4,           // column D = Player (used to find the row)
   DRAFTED_COL: 1,        // column A = the board's Drafted dropdown
-  DRAFTED: '★',          // the dropdown value that means drafted
-  UNDRAFTED: '☐',        // the dropdown value that means available
+  MINE: '★',             // my pick  -> flows to the My Team + Byes tab
+  TAKEN: '☑',            // drafted by another team (unavailable, not mine)
+  UNDRAFTED: '☐',        // still available
   TOKEN: 'CHANGE_ME'     // must equal the extension's token
 };
 
@@ -47,7 +48,7 @@ function doPost(e) {
     if (CFG.TOKEN && body.token !== CFG.TOKEN) return _json({ ok: false, error: 'bad token' });
     if (body.action === 'ping')  return _json({ ok: true, service: 'fflDraft', rows: [CFG.FIRST_ROW, CFG.LAST_ROW] });
     if (body.action === 'reset') return _json({ ok: true, reset: resetDrafted() });
-    return _json(markDrafted(body.name, body.info || ''));
+    return _json(markDrafted(body.name, body.mine));
   } catch (err) {
     return _json({ ok: false, error: String(err) });
   }
@@ -100,7 +101,7 @@ function _index() {
   return { sh: sh, exact: exact, fi: fi };
 }
 
-function markDrafted(name, info) {
+function markDrafted(name, mine) {
   if (!name) return { ok: false, error: 'no name' };
   var ix = _index();
   var row = ix.exact[_norm(name)];
@@ -111,11 +112,14 @@ function markDrafted(name, info) {
   }
   if (!row) return { ok: false, error: 'no match', name: name };
 
-  // Set the board's own Drafted dropdown; the sheet's conditional formatting
-  // strikes the row from there. info (e.g. "R.P") is ignored unless you also
-  // keep a stamp column -- the dropdown is the single source of drafted state.
-  ix.sh.getRange(row, CFG.DRAFTED_COL).setValue(CFG.DRAFTED);
-  return { ok: true, row: row, match: how, name: name };
+  // Set the board's own Drafted dropdown: ★ for my pick, ☑ for taken-by-another.
+  // The sheet's conditional formatting strikes the row and the My Team + Byes
+  // tab filters on ★. Never downgrade an existing ★ to ☑ (my pick also shows as
+  // taken in ESPN's table, and the mark order isn't guaranteed).
+  var cell = ix.sh.getRange(row, CFG.DRAFTED_COL);
+  var mark = mine ? CFG.MINE : CFG.TAKEN;
+  if (!(mark === CFG.TAKEN && cell.getValue() === CFG.MINE)) cell.setValue(mark);
+  return { ok: true, row: row, match: how, name: name, mark: mark };
 }
 
 function resetDrafted() {

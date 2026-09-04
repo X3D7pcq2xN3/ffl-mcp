@@ -34,7 +34,7 @@ async function callWebApp(payload) {
 
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
-  if (msg.type === 'PICK')  { callWebApp({ name: msg.name, info: msg.info || '' }).then(sendResponse); return true; }
+  if (msg.type === 'PICK')  { callWebApp({ name: msg.name, mine: !!msg.mine }).then(sendResponse); return true; }
   if (msg.type === 'RESET') { callWebApp({ action: 'reset' }).then(sendResponse); return true; }
   if (msg.type === 'PING')  { callWebApp({ action: 'ping' }).then(sendResponse);  return true; }
 });

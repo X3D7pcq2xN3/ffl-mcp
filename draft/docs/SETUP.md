@@ -38,19 +38,27 @@ web app URL.
 3. Open your ESPN draft (a **mock draft** to test). A small **fflDraft** panel
    appears bottom-right. It should say **connected**.
 
-## 3. Auto-detection (already wired to ESPN's table)
+## 3. Auto-detection (already wired to ESPN)
 
-Auto-marking reads ESPN's own player table: when a player is taken, their row's
-draft button flips to the disabled **"Drafted"** state, and the extension reads
-that. No setup — it just works while the draft is open.
+Auto-marking reads two things from ESPN's draft room, so the board can tell your
+team from everyone else's:
 
-**One thing to keep set:** leave ESPN's player list on **"All"**, not
-**"Available only."** If drafted players are filtered out of the table, their
-rows leave the page and there's nothing for the extension to read.
+- **Taken by anyone** → the player's draft button flips to the disabled
+  **"Drafted"** state. The board marks these **☑** (struck, unavailable).
+- **Your own picks** → the **"My Team" roster panel** lists them. The board
+  marks these **★**, which is what the *My Team + Byes* tab filters on.
 
-If ESPN changes its markup in a future season and auto goes quiet, re-inspect a
-drafted row and update the three selectors in `extension/content.js → SEL`
-(`DRAFTED_BTN`, `ROW`, `NAME`).
+No setup — it works while the draft is open, and marks your ★ picks separately
+from opponents' ☑ picks.
+
+**Two things to keep set:**
+1. Leave the player list on **"All"**, not "Available only" — filtered-out
+   drafted rows leave the page and can't be read.
+2. Keep the roster panel showing **your** team, not an opponent's — otherwise
+   their players get tagged ★ as yours.
+
+If ESPN changes its markup in a future season and auto goes quiet, re-inspect
+and update the selectors in `extension/content.js → SEL`.
 
 The manual panel is always there as a fallback — **type/paste a name** + Enter,
 or **select a name** on the page + **Alt+D** — so you're never blocked.
@@ -66,8 +74,10 @@ editor). It clears the strikethroughs.
   if it breaks you lose auto-marking, never a pick.
 - The **sheet is the source of truth**. Refreshing the ESPN tab re-injects the
   script; players already struck through stay struck through.
-- Marking sets the board's own **Drafted dropdown (column A) to ★**; your
-  sheet's conditional formatting strikes the row from there. So an auto-mark
-  looks identical to a manual one, and **reset** just sets the dropdowns back to
+- Marking sets the board's own **Drafted dropdown (column A)**: **★** for your
+  picks (these flow to the My Team + Byes tab), **☑** for players another team
+  took. Conditional formatting strikes both ★ and ☑ rows as unavailable; the
+  My Team tab filters on ★ so only your team shows there. **reset** sets the
+  dropdowns back to
   ☐. (This relies on the conditional-formatting rule reading its own row —
   `=$A3="★"`, not `$A2` — so a stale off-by-one rule strikes the wrong row.)
