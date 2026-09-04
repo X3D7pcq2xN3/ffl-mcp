@@ -84,12 +84,43 @@ function _fiKey(name) {
   return p[0].charAt(0) + '|' + p[p.length - 1];
 }
 
+// Team defenses are named by city on the board ("Seattle DST") but by nickname
+// in ESPN's draft ("Seahawks D/ST"), so neither exact nor initial+last match.
+// Map every distinctive city/nickname token to a team code and match a defense
+// on that code instead. Ambiguous bare tokens (la, new, york) are left out --
+// the nickname (rams/chargers/giants/jets) disambiguates and is always present.
+var TEAM = {
+  arizona:'ARI', cardinals:'ARI', atlanta:'ATL', falcons:'ATL',
+  baltimore:'BAL', ravens:'BAL', buffalo:'BUF', bills:'BUF',
+  carolina:'CAR', panthers:'CAR', chicago:'CHI', bears:'CHI',
+  cincinnati:'CIN', bengals:'CIN', cleveland:'CLE', browns:'CLE',
+  dallas:'DAL', cowboys:'DAL', denver:'DEN', broncos:'DEN',
+  detroit:'DET', lions:'DET', packers:'GB', houston:'HOU', texans:'HOU',
+  indianapolis:'IND', colts:'IND', jacksonville:'JAX', jaguars:'JAX', jags:'JAX',
+  chiefs:'KC', raiders:'LV', vegas:'LV', chargers:'LAC', rams:'LAR',
+  miami:'MIA', dolphins:'MIA', minnesota:'MIN', vikings:'MIN',
+  england:'NE', patriots:'NE', pats:'NE', orleans:'NO', saints:'NO',
+  giants:'NYG', jets:'NYJ', philadelphia:'PHI', eagles:'PHI',
+  pittsburgh:'PIT', steelers:'PIT', francisco:'SF', niners:'SF',
+  seattle:'SEA', seahawks:'SEA', tampa:'TB', buccaneers:'TB', bucs:'TB',
+  tennessee:'TEN', titans:'TEN', washington:'WAS', commanders:'WAS'
+};
+
+// A defense key ("dst|<code>") when the name looks like a team defense, else null.
+function _dstKey(name) {
+  var s = _norm(name);
+  if (s.indexOf('dst') === -1 && s.indexOf('d st') === -1 && s.indexOf('defense') === -1) return null;
+  var toks = s.split(' '), code = null;
+  for (var i = 0; i < toks.length; i++) { if (TEAM[toks[i]]) { code = TEAM[toks[i]]; break; } }
+  return code ? 'dst|' + code : null;
+}
+
 function _index() {
   var sh = SpreadsheetApp.getActive().getSheetByName(CFG.SHEET);
   if (!sh) throw new Error('sheet "' + CFG.SHEET + '" not found');
   var n = CFG.LAST_ROW - CFG.FIRST_ROW + 1;
   var names = sh.getRange(CFG.FIRST_ROW, CFG.NAME_COL, n, 1).getValues();
-  var exact = {}, fi = {};
+  var exact = {}, fi = {}, dst = {};
   for (var i = 0; i < n; i++) {
     var raw = names[i][0];
     if (!raw) continue;
@@ -97,8 +128,10 @@ function _index() {
     exact[_norm(raw)] = row;
     var k = _fiKey(raw);
     if (k) fi[k] = (k in fi) ? -1 : row;   // -1 marks an ambiguous initial+last
+    var d = _dstKey(raw);
+    if (d) dst[d] = row;
   }
-  return { sh: sh, exact: exact, fi: fi };
+  return { sh: sh, exact: exact, fi: fi, dst: dst };
 }
 
 function markDrafted(name, mine) {
@@ -109,6 +142,10 @@ function markDrafted(name, mine) {
   if (!row) {
     var k = _fiKey(name);
     if (k && ix.fi[k] && ix.fi[k] !== -1) { row = ix.fi[k]; how = 'initial+last'; }
+  }
+  if (!row) {                                // team defense (city vs nickname)
+    var d = _dstKey(name);
+    if (d && ix.dst[d]) { row = ix.dst[d]; how = 'dst-team'; }
   }
   if (!row) return { ok: false, error: 'no match', name: name };
 
