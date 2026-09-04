@@ -2,12 +2,11 @@
  *
  * Two ways a pick reaches the sheet, by design:
  *
- *   1. AUTO — a MutationObserver watches the live pick feed and fires on each
- *      new pick. ESPN's markup is not documented and changes between seasons,
- *      so the selectors in SEL are a STARTING POINT you confirm against a mock
- *      draft (ESPN runs mocks year-round): right-click a completed pick in the
- *      feed > Inspect, then set PICK_NAME to the element holding the player's
- *      name. Until it's confirmed, auto may catch nothing — that's expected.
+ *   1. AUTO — reads ESPN's own player table: each player's draft button flips
+ *      to the disabled "Drafted" state (class Button--drafted) when taken, and
+ *      that is the signal. See SEL below. ESPN's markup can change between
+ *      seasons; if auto ever goes quiet, re-inspect a drafted row and update
+ *      the three selectors in SEL.
  *
  *   2. MANUAL — a small panel (bottom-right) with a text box and a hotkey.
  *      Type or paste a name and Enter, or select a name anywhere on the page
@@ -21,16 +20,24 @@
 
 const api = (typeof browser !== 'undefined') ? browser : chrome;
 
-/* ---- ESPN selectors — CONFIRM ON A MOCK DRAFT --------------------------- */
+/* ---- ESPN selectors (confirmed against ESPN's live player table) --------
+ * ESPN's player table gives each player a draft button that flips to the
+ * disabled "Drafted" state (class Button--drafted) once that player is taken
+ * -- by anyone. That button IS the drafted signal, so we read it rather than
+ * hunt a separate pick feed: find each drafted button, walk up to its row, and
+ * take the player name from that row. This also means loading mid-draft marks
+ * everyone already taken (a free catch-up), and it never false-fires on
+ * available players (their button is a different, enabled class).
+ *
+ * One caveat: keep ESPN's list on "All" players, not "Available only" -- if
+ * drafted players are filtered out of the table their rows leave the DOM and
+ * there's nothing to read. The manual box / Alt+D remain the fallback. */
 const SEL = {
-  // An element that wraps the player name inside one completed pick. The
-  // defaults are broad guesses; narrow them once you inspect the real feed.
-  PICK_NAME: 'a[href*="/player/"], [class*="playerName"], [class*="PlayerName"], [class*="athleteName"]',
-  // Optional: a container to scan on a timer as a reconcile safety net. Leave
-  // as document.body if unsure.
-  FEED: 'body'
+  DRAFTED_BTN: 'button.Button--drafted',                       // a taken player's button
+  ROW: '.fixedDataTableCellGroupLayout_cellGroupWrapper',      // row holding button + name
+  NAME: '.playerinfo__playername'                              // holds ONLY the name
 };
-const RECONCILE_MS = 4000;   // periodic re-scan to self-heal missed mutations
+const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
 /* ---- de-dupe: a player is drafted once ---------------------------------- */
 const seen = new Set();
@@ -52,28 +59,28 @@ function send(name, info) {
 }
 
 /* ---- auto detection ----------------------------------------------------- */
-function textFrom(el) {
-  const hit = el.matches && el.matches(SEL.PICK_NAME) ? el
-            : (el.querySelector ? el.querySelector(SEL.PICK_NAME) : null);
-  const t = hit && (hit.textContent || '').trim();
+// From a drafted button, the player name in its row. The name lives in
+// .playerinfo__playername (a sibling span holds the news-icon link, so we
+// don't read that by mistake).
+function nameForDraftedButton(btn) {
+  const row = btn.closest(SEL.ROW) || btn.closest('[role="row"]');
+  const el = row && row.querySelector(SEL.NAME);
+  const t = el && (el.textContent || '').trim();
   return t && t.length >= 3 ? t : null;
 }
-function scan(root) {
-  if (!root || !root.querySelectorAll) return;
-  root.querySelectorAll(SEL.PICK_NAME).forEach((el) => {
-    const t = (el.textContent || '').trim();
-    if (t && t.length >= 3) send(t);
+function scanDrafted() {
+  document.querySelectorAll(SEL.DRAFTED_BTN).forEach((btn) => {
+    const name = nameForDraftedButton(btn);
+    if (name) send(name);   // send() de-dupes, so re-scanning is free
   });
 }
 function startAuto() {
-  const obs = new MutationObserver((muts) => {
-    for (const m of muts) m.addedNodes.forEach((n) => {
-      if (n.nodeType === 1) { const t = textFrom(n); if (t) send(t); }
-    });
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
-  const feed = document.querySelector(SEL.FEED) || document.body;
-  setInterval(() => scan(feed), RECONCILE_MS);   // reconcile safety net
+  // Rows re-render as the table virtualizes and buttons flip to Drafted; a
+  // childList observer catches the re-renders, the interval catches pure class
+  // flips. send()'s `seen` set means repeats cost nothing.
+  new MutationObserver(scanDrafted).observe(document.body, { childList: true, subtree: true });
+  setInterval(scanDrafted, RECONCILE_MS);
+  scanDrafted();   // catch up on everyone already drafted at load
 }
 
 /* ---- passive sidecar panel ---------------------------------------------- */
