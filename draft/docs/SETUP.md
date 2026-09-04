@@ -10,9 +10,12 @@ web app URL.
    Sheet** (upload to Drive → Open with Google Sheets, or File → Save as Google
    Sheets). The tab must be named **Draft Board** with players in **rows 3–180**
    and the name in **column D** — that's how the export is already shaped.
-2. **Extensions → Apps Script**. Paste `apps-script/mark-drafted.gs`. (If you
-   use the fuzzy-search box, keep `draft-board/draft_board_fuzzy_search.gs` too;
-   they don't conflict.)
+2. **Extensions → Apps Script**. Paste `apps-script/mark-drafted.gs`. Add
+   `apps-script/autofit-rows.gs` too (auto-fits row heights on open + a
+   "Draft Board → Auto-fit rows" menu). If you use the fuzzy-search box, keep
+   `draft-board/draft_board_fuzzy_search.gs` as well — all three coexist in one
+   project. (Only paste one `onOpen`: if another file already defines one, move
+   the menu/auto-fit lines into it instead of declaring a second.)
 3. In `CFG`, set `TOKEN` to any random string. Remember it for step 2 below.
 4. **Deploy → New deployment → Web app**
    - *Execute as*: **Me**
@@ -63,6 +66,8 @@ editor). It clears the strikethroughs.
   if it breaks you lose auto-marking, never a pick.
 - The **sheet is the source of truth**. Refreshing the ESPN tab re-injects the
   script; players already struck through stay struck through.
-- The mark is **strikethrough only** by default (fully reversible). To also gray
-  the row or stamp a column, set `MARK_FILL` / `STAMP_COL` in the script — note
-  a fill overwrites your round banding on that cell.
+- Marking sets the board's own **Drafted dropdown (column A) to ★**; your
+  sheet's conditional formatting strikes the row from there. So an auto-mark
+  looks identical to a manual one, and **reset** just sets the dropdowns back to
+  ☐. (This relies on the conditional-formatting rule reading its own row —
+  `=$A3="★"`, not `$A2` — so a stale off-by-one rule strikes the wrong row.)

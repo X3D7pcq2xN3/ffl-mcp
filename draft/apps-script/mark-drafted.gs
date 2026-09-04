@@ -21,20 +21,24 @@
  *   5. Re-deploy (Manage deployments > edit > new version) whenever you edit
  *      this file, or the old code keeps serving.
  *
- * The mark is strikethrough on the name cell -- fully reversible. Run
- * resetDrafted() from the editor (or POST {action:"reset"}) to clear the
- * board before your next mock. Optional fill / stamp-column are OFF by
- * default because they would overwrite your round banding.
+ * How it marks: it sets the board's OWN "Drafted" dropdown (column A) to the
+ * drafted value, and the sheet's conditional formatting strikes the row. This
+ * is the board's native mechanism -- an extension pick looks identical to a
+ * manual one, and reset just puts the dropdown back. (An earlier version struck
+ * the name cell's font directly; that bypassed the dropdown and the row
+ * formatting, so a pick and a manual mark disagreed.) Run resetDrafted() from
+ * the editor (or POST {action:"reset"}) to clear the board before a mock.
  */
 
 var CFG = {
   SHEET: 'Draft Board',
-  FIRST_ROW: 3,        // first player row
-  LAST_ROW: 180,       // last player row
-  NAME_COL: 4,         // column D = Player
-  STAMP_COL: 0,        // set to a FREE column number to stamp "R.P"; 0 = off
-  MARK_FILL: '',       // e.g. '#d9d9d9' to gray drafted rows; '' = off (keeps banding)
-  TOKEN: 'CHANGE_ME'   // must equal the extension's token
+  FIRST_ROW: 3,          // first player row
+  LAST_ROW: 180,         // last player row
+  NAME_COL: 4,           // column D = Player (used to find the row)
+  DRAFTED_COL: 1,        // column A = the board's Drafted dropdown
+  DRAFTED: '★',          // the dropdown value that means drafted
+  UNDRAFTED: '☐',        // the dropdown value that means available
+  TOKEN: 'CHANGE_ME'     // must equal the extension's token
 };
 
 function doPost(e) {
@@ -107,18 +111,16 @@ function markDrafted(name, info) {
   }
   if (!row) return { ok: false, error: 'no match', name: name };
 
-  var cell = ix.sh.getRange(row, CFG.NAME_COL);
-  cell.setFontLine('line-through');
-  if (CFG.MARK_FILL) cell.setBackground(CFG.MARK_FILL);
-  if (CFG.STAMP_COL) ix.sh.getRange(row, CFG.STAMP_COL).setValue(info || '✓');
+  // Set the board's own Drafted dropdown; the sheet's conditional formatting
+  // strikes the row from there. info (e.g. "R.P") is ignored unless you also
+  // keep a stamp column -- the dropdown is the single source of drafted state.
+  ix.sh.getRange(row, CFG.DRAFTED_COL).setValue(CFG.DRAFTED);
   return { ok: true, row: row, match: how, name: name };
 }
 
 function resetDrafted() {
   var sh = SpreadsheetApp.getActive().getSheetByName(CFG.SHEET);
   var n = CFG.LAST_ROW - CFG.FIRST_ROW + 1;
-  sh.getRange(CFG.FIRST_ROW, CFG.NAME_COL, n, 1).setFontLine('none');
-  if (CFG.MARK_FILL) sh.getRange(CFG.FIRST_ROW, CFG.NAME_COL, n, 1).setBackground(null);
-  if (CFG.STAMP_COL) sh.getRange(CFG.FIRST_ROW, CFG.STAMP_COL, n, 1).clearContent();
+  sh.getRange(CFG.FIRST_ROW, CFG.DRAFTED_COL, n, 1).setValue(CFG.UNDRAFTED);
   return n;
 }
