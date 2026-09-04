@@ -38,22 +38,22 @@ web app URL.
 3. Open your ESPN draft (a **mock draft** to test). A small **fflDraft** panel
    appears bottom-right. It should say **connected**.
 
-## 3. Confirm the ESPN selector (once, on a mock)
+## 3. Auto-detection (already wired to ESPN's table)
 
-Auto-detection ships with broad guesses. To make it reliable:
+Auto-marking reads ESPN's own player table: when a player is taken, their row's
+draft button flips to the disabled **"Drafted"** state, and the extension reads
+that. No setup — it just works while the draft is open.
 
-1. Start an ESPN **mock draft**. Let a pick or two happen.
-2. Right-click a completed pick in the pick feed → **Inspect**.
-3. Find the element holding the player's **name**; note a stable class or an
-   `a[href*="/player/"]`.
-4. Put that selector in `extension/content.js` → `SEL.PICK_NAME`. Reload the
-   temporary add-on.
+**One thing to keep set:** leave ESPN's player list on **"All"**, not
+**"Available only."** If drafted players are filtered out of the table, their
+rows leave the page and there's nothing for the extension to read.
 
-Until then — and any time auto misbehaves — the panel still works:
-- **type/paste a name** + Enter, or
-- **select a name** on the page + **Alt+D**.
+If ESPN changes its markup in a future season and auto goes quiet, re-inspect a
+drafted row and update the three selectors in `extension/content.js → SEL`
+(`DRAFTED_BTN`, `ROW`, `NAME`).
 
-Both mark the sheet immediately, so you're never blocked.
+The manual panel is always there as a fallback — **type/paste a name** + Enter,
+or **select a name** on the page + **Alt+D** — so you're never blocked.
 
 ## Resetting between mocks
 
