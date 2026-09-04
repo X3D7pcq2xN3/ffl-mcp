@@ -39,7 +39,13 @@ var CFG = {
   MINE: '★',             // my pick  -> flows to the My Team + Byes tab
   TAKEN: '☑',            // drafted by another team (unavailable, not mine)
   UNDRAFTED: '☐',        // still available
-  TOKEN: 'CHANGE_ME'     // must equal the extension's token
+  TOKEN: 'CHANGE_ME',    // must equal the extension's token
+  // A pick of yours that isn't on the board's player list still has to reach
+  // the My Team tab, so it's captured here (column K of the My Team tab).
+  OVERFLOW_SHEET: 'My Team + Byes',
+  OVERFLOW_COL: 11,      // column K
+  OVERFLOW_FIRST: 5,
+  OVERFLOW_LAST: 100
 };
 
 function doPost(e) {
@@ -147,7 +153,10 @@ function markDrafted(name, mine) {
     var d = _dstKey(name);
     if (d && ix.dst[d]) { row = ix.dst[d]; how = 'dst-team'; }
   }
-  if (!row) return { ok: false, error: 'no match', name: name };
+  if (!row) {                                // not on the board's player list
+    if (mine) return _overflow(name);        // capture YOUR pick anyway
+    return { ok: true, offboard: true, name: name };  // opponent off-board: ignore
+  }
 
   // Set the board's own Drafted dropdown: ★ for my pick, ☑ for taken-by-another.
   // The sheet's conditional formatting strikes the row and the My Team + Byes
@@ -159,9 +168,30 @@ function markDrafted(name, mine) {
   return { ok: true, row: row, match: how, name: name, mark: mark };
 }
 
+// Append an off-board pick of yours to the My Team overflow list (deduped), so
+// it still shows on the My Team tab even though it has no Draft Board row.
+function _overflow(name) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(CFG.OVERFLOW_SHEET);
+  if (!sh) return { ok: true, offboard: true, name: name };  // tab missing: no-op
+  var n = CFG.OVERFLOW_LAST - CFG.OVERFLOW_FIRST + 1;
+  var col = sh.getRange(CFG.OVERFLOW_FIRST, CFG.OVERFLOW_COL, n, 1).getValues();
+  var want = _norm(name), free = -1;
+  for (var i = 0; i < n; i++) {
+    var v = col[i][0];
+    if (v && _norm(v) === want) return { ok: true, offboard: true, name: name, dup: true };
+    if (free === -1 && !v) free = i;
+  }
+  if (free === -1) return { ok: false, error: 'overflow full', name: name };
+  sh.getRange(CFG.OVERFLOW_FIRST + free, CFG.OVERFLOW_COL).setValue(name);
+  return { ok: true, offboard: true, name: name };
+}
+
 function resetDrafted() {
   var sh = SpreadsheetApp.getActive().getSheetByName(CFG.SHEET);
   var n = CFG.LAST_ROW - CFG.FIRST_ROW + 1;
   sh.getRange(CFG.FIRST_ROW, CFG.DRAFTED_COL, n, 1).setValue(CFG.UNDRAFTED);
+  var ov = SpreadsheetApp.getActive().getSheetByName(CFG.OVERFLOW_SHEET);
+  if (ov) ov.getRange(CFG.OVERFLOW_FIRST, CFG.OVERFLOW_COL,
+                      CFG.OVERFLOW_LAST - CFG.OVERFLOW_FIRST + 1, 1).clearContent();
   return n;
 }
