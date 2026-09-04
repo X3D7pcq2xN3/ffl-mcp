@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>fflDraft options</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 560px; margin: 32px auto; padding: 0 16px; color: #202124; }
+    h1 { font-size: 18px; }
+    label { display: block; font-weight: 600; margin: 16px 0 4px; }
+    input { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 6px; box-sizing: border-box; }
+    .hint { color: #5f6368; font-size: 12px; margin-top: 4px; }
+    button { margin-top: 20px; padding: 8px 16px; border: 0; border-radius: 6px; background: #1a73e8; color: #fff; font-size: 14px; cursor: pointer; }
+    #saved { color: #137333; margin-left: 12px; }
+  </style>
+</head>
+<body>
+  <h1>fflDraft — settings</h1>
+  <label for="url">Apps Script web app URL</label>
+  <input id="url" type="url" placeholder="https://script.google.com/macros/s/AKfy.../exec">
+  <div class="hint">From your sheet: Extensions &gt; Apps Script &gt; Deploy &gt; Web app. Paste the <b>/exec</b> URL.</div>
+
+  <label for="token">Shared token</label>
+  <input id="token" type="text" placeholder="must match CFG.TOKEN in mark-drafted.gs">
+  <div class="hint">Any random string. It must equal <code>CFG.TOKEN</code> in the Apps Script.</div>
+
+  <div><button id="save">Save</button><span id="saved"></span></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
