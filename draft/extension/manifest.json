@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "fflDraft — ESPN pick watcher",
+  "version": "0.1.0",
+  "description": "Watches ESPN live draft picks and marks players drafted on your Google Sheets draft board.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ffldraft@local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://*.espn.com/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [
+    {
+      "matches": ["*://*.espn.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "action": { "default_title": "fflDraft options" }
+}
