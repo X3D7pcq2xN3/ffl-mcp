@@ -45,17 +45,16 @@ team from everyone else's:
 
 - **Taken by anyone** → the player's draft button flips to the disabled
   **"Drafted"** state. The board marks these **☑** (struck, unavailable).
-- **Your own picks** → the **"My Team" roster panel** lists them. The board
-  marks these **★**, which is what the *My Team + Byes* tab filters on.
+- **Your own picks** → ESPN tags them with its own `my-pick` class (in the
+  draft log / pick feed and on the drafted row). The board marks these **★**,
+  which is what the *My Team + Byes* tab filters on — instantly, with no
+  roster-tab switching.
 
 No setup — it works while the draft is open, and marks your ★ picks separately
 from opponents' ☑ picks.
 
-**Two things to keep set:**
-1. Leave the player list on **"All"**, not "Available only" — filtered-out
-   drafted rows leave the page and can't be read.
-2. Keep the roster panel showing **your** team, not an opponent's — otherwise
-   their players get tagged ★ as yours.
+**One thing to keep set:** leave the player list on **"All"**, not "Available
+only" — filtered-out drafted rows leave the page and can't be read as taken.
 
 If ESPN changes its markup in a future season and auto goes quiet, re-inspect
 and update the selectors in `extension/content.js → SEL`.

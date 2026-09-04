@@ -23,23 +23,21 @@ const api = (typeof browser !== 'undefined') ? browser : chrome;
  * TWO signals, because "taken" and "mine" are different questions:
  *   TAKEN (anyone) -- a player's draft button flips to the disabled "Drafted"
  *     state (Button--drafted). These become ☑ on the board.
- *   MINE -- the "My Team" roster panel lists the players YOU drafted as
- *     Table__TR rows; .player-column carries the full name in its `title`
- *     (the link text is abbreviated, e.g. "J. Dart"). These become ★, which
- *     is what the My Team + Byes tab filters on.
- * A player you drafted appears in both, so ★ wins over ☑ -- push() upgrades.
+ *   MINE -- ESPN tags YOUR picks with a `.player-column.my-pick` class that
+ *     opponents' rows don't have (in the draft log / pick feed, and on the
+ *     drafted row itself). These become ★, which the My Team + Byes tab filters
+ *     on. Reading ESPN's own marker means no roster-panel dependency and no
+ *     lag: a pick goes ★ the instant it lands, wherever my-pick renders.
+ * A player you drafted is both taken and mine, so ★ wins over ☑ -- push()
+ * upgrades and the web app never downgrades ★ to ☑.
  *
- * Two usage caveats:
- *   - Keep ESPN's list on "All", not "Available only", or drafted rows leave
- *     the table and can't be read as taken.
- *   - Keep the roster panel showing YOUR team, not an opponent's, or their
- *     players get tagged ★ as yours. */
+ * One usage caveat: keep ESPN's list on "All", not "Available only", or drafted
+ * rows leave the table and can't be read as taken. */
 const SEL = {
   DRAFTED_BTN: 'button.Button--drafted',                       // a taken player's button
   ROW: '.fixedDataTableCellGroupLayout_cellGroupWrapper',      // its row (holds button + name)
   NAME: '.playerinfo__playername',                             // holds ONLY the name
-  MINE_ROW: 'tr.Table__TR',                                    // a "My Team" roster row
-  MINE_NAME: '.player-column[title]'                           // full name in its title attr
+  MINE: '.player-column.my-pick'                               // ESPN's own marker on YOUR picks
 };
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
@@ -66,24 +64,27 @@ function push(name, mine) {
 }
 
 /* ---- auto detection ----------------------------------------------------- */
-// From a drafted button, the player name in its row. The name lives in
-// .playerinfo__playername (a sibling span holds the news-icon link, so we
-// don't read that by mistake).
-function nameForDraftedButton(btn) {
-  const row = btn.closest(SEL.ROW) || btn.closest('[role="row"]');
-  const el = row && row.querySelector(SEL.NAME);
-  const t = el && (el.textContent || '').trim();
+// The player name inside a container (.playerinfo__playername; a sibling span
+// holds the news-icon link and the injury tag, so we don't read those).
+function nameIn(el) {
+  const n = el && el.querySelector(SEL.NAME);
+  const t = n && (n.textContent || '').trim();
   return t && t.length >= 3 ? t : null;
 }
 function scanDrafted() {
+  // TAKEN: a drafted button means the player is off the board. Its row carries
+  // ESPN's .my-pick marker when the player is yours, so we can tag ☑-vs-★ right
+  // here on the pool tab -- no waiting to see a roster panel.
   document.querySelectorAll(SEL.DRAFTED_BTN).forEach((btn) => {
-    const name = nameForDraftedButton(btn);
-    if (name) push(name, false);            // ☑ taken; upgrades to ★ if also mine
+    const row = btn.closest(SEL.ROW) || btn.closest('[role="row"]');
+    const name = nameIn(row);
+    if (name) push(name, !!(row && row.querySelector(SEL.MINE)));
   });
-  // MINE: roster-panel rows -- read the full name from the title attribute.
-  document.querySelectorAll(`${SEL.MINE_ROW} ${SEL.MINE_NAME}`).forEach((el) => {
-    const name = (el.getAttribute('title') || '').trim();
-    if (name.length >= 3) push(name, true); // ★ mine (wins over ☑)
+  // MINE: anywhere ESPN marks a pick as yours (the always-visible draft log /
+  // pick feed uses .player-column.my-pick). Lag-free -- ★ the moment it lands.
+  document.querySelectorAll(SEL.MINE).forEach((pc) => {
+    const name = nameIn(pc);
+    if (name) push(name, true);             // ★ mine (wins over ☑)
   });
 }
 function startAuto() {
