@@ -40,11 +40,11 @@ holds league settings and player identifiers.
 | `coverage.py` | Reports which of a league's scored categories the projections cover, and which scorable categories go uncounted |
 
 The in-season analysis layer above is the Python at the repo root. Draft day is
-a separate, self-contained tool under [`espn/`](espn/): a Firefox/Zen browser
-extension that watches an ESPN live draft and strikes each drafted player off a
-Google Sheets draft board (via a small Apps Script web app). It shares no code
-with the Python — only the name-normalization idea — and has its own setup in
-[`espn/docs/SETUP.md`](espn/docs/SETUP.md).
+a separate, self-contained tool under [`draft/espn/`](draft/espn/): a Firefox/Zen
+browser extension that watches an ESPN live draft and strikes each drafted player
+off a Google Sheets draft board (via a small Apps Script web app). It shares no
+code with the Python — only the name-normalization idea — and has its own setup
+in [`draft/espn/docs/SETUP.md`](draft/espn/docs/SETUP.md).
 
 ## Yahoo endpoints used
 
