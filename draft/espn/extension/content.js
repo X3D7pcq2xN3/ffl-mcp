@@ -18,7 +18,7 @@
  * re-injects this script and already-marked players stay marked. */
 
 const api = (typeof browser !== 'undefined') ? browser : chrome;
-const FFLD_VERSION = 'v4-roster';   // bump on each change; shown on the panel + logged on load
+const FFLD_VERSION = 'v5-feed';   // bump on each change; shown on the panel + logged on load
 
 /* ---- ESPN selectors (confirmed against ESPN's live draft room) ----------
  * TWO signals, because "taken" and "mine" are different questions:
@@ -58,6 +58,19 @@ const ROSTER = {
   ROW: 'tr.Table__TR',
   NAME: '.player-column',
   POS: '[title="Position"]'
+};
+
+/* The pick feed / draft log. Every team's pick posts here the instant it's made
+ * (newest at the bottom), so this catches OPPONENTS' picks with no scrolling --
+ * unlike the virtualized player pool, where a "Drafted" button only exists for
+ * rows you've scrolled into view. Feed entries are marked ☑ (taken); the roster
+ * scan still upgrades your own picks to ★, so we don't need to read the drafting
+ * team name here.
+ *   Item: li.pick-message__container  (one per pick)
+ *   Name: .playerinfo__playername     (e.g. "Steelers D/ST") */
+const FEED = {
+  ITEM: 'li.pick-message__container',
+  NAME: '.playerinfo__playername'
 };
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
@@ -107,7 +120,19 @@ function scanDrafted() {
     const name = nameIn(pc);
     if (name) push(name, true);             // ★ mine (wins over ☑)
   });
+  scanFeed();
   scanRoster();
+}
+
+// TAKEN (scroll-proof): the pick feed lists every pick as it's made, so we catch
+// opponents' picks here without scrolling the pool. Mark ☑; scanRoster upgrades
+// any of these that are yours to ★.
+function scanFeed() {
+  document.querySelectorAll(FEED.ITEM).forEach((li) => {
+    const n = li.querySelector(FEED.NAME);
+    const name = n && (n.textContent || '').trim();
+    if (name && name.length >= 3) push(name, false);
+  });
 }
 
 // MINE (search-proof): read the Roster sidebar. It's never virtualized, so a
