@@ -44,18 +44,19 @@ const SEL = {
  * unlike the pool table it is NOT virtualized -- your ~15 players are always in
  * the DOM -- so it still marks ★ for a player you had to SEARCH to draft, whose
  * pool row scrolls out of the page the moment you clear the search box.
- *   Row:  tr.Table__TR  (also used by other panels, so we filter by BYE)
+ *   Row:  tr.Table__TR  (also used by other panels, so we filter by POS)
  *   Name: .player-column[title="Full Name"]  (full name in the title attr; the
  *         visible <a> text is abbreviated, e.g. "J. Gibbs")
- *   Bye:  a [title="Bye Week"] cell is present on roster rows but not on the
- *         Pick Queue panel -- that's how we avoid marking QUEUED (undrafted)
- *         players as picks.
+ *   Pos:  a [title="Position"] cell (QB/RB/.../BE) is on EVERY roster row --
+ *         starters and bench alike -- but not on the Pick Queue panel, so it
+ *         both excludes QUEUED (undrafted) players and, unlike a Bye-Week cell,
+ *         still matches bench (BE) picks whose bye may not render.
  * Caveat: keep the roster panel's team dropdown on YOUR team (the default). If
  * you switch it to view an opponent, their players would read as yours. */
 const ROSTER = {
   ROW: 'tr.Table__TR',
   NAME: '.player-column',
-  BYE: '[title="Bye Week"]'
+  POS: '[title="Position"]'
 };
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
@@ -113,7 +114,7 @@ function scanDrafted() {
 // vanishes before it can upgrade ☑ to ★.
 function scanRoster() {
   document.querySelectorAll(ROSTER.ROW).forEach((tr) => {
-    if (!tr.querySelector(ROSTER.BYE)) return;          // not a roster row (skip Pick Queue etc.)
+    if (!tr.querySelector(ROSTER.POS)) return;          // not a roster row (skip Pick Queue etc.)
     const pc = tr.querySelector(ROSTER.NAME);
     const name = pc && (pc.getAttribute('title') || '').trim();
     if (!name || /^empty$/i.test(name)) return;         // empty bench slot
