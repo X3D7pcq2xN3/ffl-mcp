@@ -30,6 +30,8 @@ function onEdit(e) {
   if (r === SEARCH_CELL.row && c === SEARCH_CELL.col) return searchFilter(sh, e); // A1
 }
 
+var POS_TABS = ['RB', 'WR', 'QB', 'TE'];  // position tabs the O1 toggle also drives
+
 // A1 fuzzy search: hide players whose name (col D) doesn't contain the box text.
 function searchFilter(sh, e) {
   var N = DB.LAST - DB.FIRST + 1;
@@ -37,30 +39,42 @@ function searchFilter(sh, e) {
   sh.showRows(DB.FIRST, N);                               // reset: show all players
   if (srch === '') return;                                // empty box = everything visible
   var names = sh.getRange(DB.FIRST, 4, N, 1).getValues(); // column D = Player
-  hideWhere(sh, N, function (i) {
+  hideWhere(sh, DB.FIRST, N, function (i) {
     return String(names[i][0]).toLowerCase().indexOf(srch) === -1;
   });
 }
 
-// O1 toggle: checked -> hide every drafted row (☑ or ★); unchecked -> show all.
+// O1 toggle: checked -> hide every drafted row (☑ or ★) on the Draft Board AND
+// the position tabs; unchecked -> show all rows everywhere. This is the manual
+// bulk switch; the mark-drafted web app hides each pick live using the same O1.
 function toggleDrafted(sh) {
-  var N = DB.LAST - DB.FIRST + 1;
-  sh.showRows(DB.FIRST, N);                               // always start from all-visible
   var on = sh.getRange(TOGGLE_CELL.row, TOGGLE_CELL.col).getValue() === true;
-  if (!on) return;                                        // unchecked = show everything
-  var marks = sh.getRange(DB.FIRST, DRAFTED_COL, N, 1).getValues();
-  hideWhere(sh, N, function (i) {
+  applyHide(sh, DB.FIRST, DB.LAST - DB.FIRST + 1, on);    // Draft Board
+  var ss = SpreadsheetApp.getActive();
+  POS_TABS.forEach(function (name) {                      // RB/WR/QB/TE
+    var ps = ss.getSheetByName(name);
+    if (ps && ps.getLastRow() >= 2) applyHide(ps, 2, ps.getLastRow() - 1, on);
+  });
+}
+
+// Show all `n` rows from `first`, then (if `on`) hide the drafted ones (col A
+// not ☐). One sheet's worth of the toggle.
+function applyHide(sheet, first, n, on) {
+  sheet.showRows(first, n);
+  if (!on) return;
+  var marks = sheet.getRange(first, DRAFTED_COL, n, 1).getValues();
+  hideWhere(sheet, first, n, function (i) {
     return marks[i][0] && marks[i][0] !== UNDRAFTED;      // drafted by anyone
   });
 }
 
-// Hide rows FIRST..LAST for which want(i) is true, in contiguous blocks (fast).
-function hideWhere(sh, N, want) {
+// Hide rows first..first+n-1 for which want(i) is true, in contiguous blocks.
+function hideWhere(sh, first, n, want) {
   var runStart = -1, runLen = 0;
-  for (var i = 0; i <= N; i++) {
-    var hide = (i < N) && want(i);
+  for (var i = 0; i <= n; i++) {
+    var hide = (i < n) && want(i);
     if (hide) {
-      if (runStart === -1) { runStart = DB.FIRST + i; runLen = 1; } else { runLen++; }
+      if (runStart === -1) { runStart = first + i; runLen = 1; } else { runLen++; }
     } else if (runStart !== -1) {
       sh.hideRows(runStart, runLen);
       runStart = -1; runLen = 0;

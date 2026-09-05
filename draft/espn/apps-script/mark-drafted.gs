@@ -40,13 +40,16 @@ var CFG = {
   TAKEN: '☑',            // drafted by another team (unavailable, not mine)
   UNDRAFTED: '☐',        // still available
   TOKEN: 'CHANGE_ME',    // must equal the extension's token
-  // Hide the row the instant a player is marked, so the board shows only who's
-  // still available -- live, no manual re-filter. A basic Sheets Filter can't
-  // do this (it snapshots values and has to be reapplied after every pick, and
-  // onEdit never fires on a script setValue), so the web app hides the row
-  // itself. resetDrafted() unhides everything. Set false to keep every row
-  // visible and rely on the strikethrough alone.
-  HIDE_ON_MARK: true,
+  // The O1 checkbox on the Draft Board is the single master "hide drafted"
+  // switch (setupDraftedToggle). When it's checked, each pick's row is hidden
+  // the instant it's marked -- on the Draft Board AND on the player's position
+  // tab (RB/WR/QB/TE) -- so the board shows only who's still available, no
+  // manual re-filter (a basic Sheets Filter snapshots values and onEdit never
+  // fires on a script setValue). Uncheck O1 and picks stay visible (struck
+  // through). resetDrafted() always unhides everything.
+  TOGGLE_ROW: 1,         // O1: the "hide drafted" checkbox on the Draft Board
+  TOGGLE_COL: 15,        // column O
+  POS_TABS: ['RB', 'WR', 'QB', 'TE'],  // position tabs that mirror the board's hide
   // A pick of yours that isn't on the board's player list still has to reach
   // the My Team tab, so it's captured here. Column Q was verified empty on the
   // My Team tab (the bye-week table occupies H:N; A:E is the roster spill), so
@@ -174,10 +177,37 @@ function markDrafted(name, mine) {
   var cell = ix.sh.getRange(row, CFG.DRAFTED_COL);
   var mark = mine ? CFG.MINE : CFG.TAKEN;
   if (!(mark === CFG.TAKEN && cell.getValue() === CFG.MINE)) cell.setValue(mark);
-  // Drop the drafted row out of view so the board is only players still on the
-  // clock. Reversible -- resetDrafted() shows every row again for the next mock.
-  if (CFG.HIDE_ON_MARK) ix.sh.hideRows(row);
-  return { ok: true, row: row, match: how, name: name, mark: mark, hidden: !!CFG.HIDE_ON_MARK };
+  // When the O1 toggle is on, drop the drafted row out of view -- on the board
+  // and on the player's position tab. Reversible (uncheck O1 or resetDrafted()).
+  var hide = _hideOn(ix.sh);
+  if (hide) {
+    ix.sh.hideRows(row);
+    _hidePositionRow(ix.sh.getRange(row, CFG.NAME_COL).getValue());
+  }
+  return { ok: true, row: row, match: how, name: name, mark: mark, hidden: hide };
+}
+
+// The O1 checkbox is the master hide switch (missing/unchecked reads falsy).
+function _hideOn(sh) {
+  return sh.getRange(CFG.TOGGLE_ROW, CFG.TOGGLE_COL).getValue() === true;
+}
+
+// Hide the same player's row on whichever position tab lists them (matched by
+// the board's canonical name in column D). A player is on at most one tab.
+function _hidePositionRow(boardName) {
+  var want = _norm(boardName);
+  if (!want) return;
+  var ss = SpreadsheetApp.getActive();
+  for (var t = 0; t < CFG.POS_TABS.length; t++) {
+    var sh = ss.getSheetByName(CFG.POS_TABS[t]);
+    if (!sh) continue;
+    var last = sh.getLastRow();
+    if (last < 2) continue;
+    var names = sh.getRange(2, CFG.NAME_COL, last - 1, 1).getValues();
+    for (var i = 0; i < names.length; i++) {
+      if (names[i][0] && _norm(names[i][0]) === want) { sh.hideRows(2 + i); return; }
+    }
+  }
 }
 
 // Append an off-board pick of yours to the My Team overflow list (deduped), so
@@ -205,6 +235,12 @@ function resetDrafted() {
   var n = CFG.LAST_ROW - CFG.FIRST_ROW + 1;
   sh.getRange(CFG.FIRST_ROW, CFG.DRAFTED_COL, n, 1).setValue(CFG.UNDRAFTED);
   sh.showRows(CFG.FIRST_ROW, n);   // bring back any rows hidden as picks came in
+  // Un-hide the position tabs too (their marks clear on their own via formula).
+  var ss = SpreadsheetApp.getActive();
+  CFG.POS_TABS.forEach(function (name) {
+    var ps = ss.getSheetByName(name);
+    if (ps && ps.getLastRow() >= 2) ps.showRows(2, ps.getLastRow() - 1);
+  });
   var ov = SpreadsheetApp.getActive().getSheetByName(CFG.OVERFLOW_SHEET);
   if (ov) ov.getRange(CFG.OVERFLOW_FIRST, CFG.OVERFLOW_COL,
                       CFG.OVERFLOW_LAST - CFG.OVERFLOW_FIRST + 1, 1).clearContent();
