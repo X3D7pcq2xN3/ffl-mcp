@@ -40,6 +40,7 @@ live in whatever tab or window it's open in.
 | --- | --- |
 | `extension/` | The Firefox/Zen WebExtension (manifest, background, content script, options) |
 | `apps-script/mark-drafted.gs` | The Google Sheets web app that finds a player by name and strikes the row |
+| `apps-script/refresh-board.gs` | Two menu buttons: live injury **Status** (Sleeper) and market **ADP** + 7-day trend (FFC), written into the Sheet in place — annotation columns, never a re-rank |
 | `draft-board/` | The Draft Board workbook and the earlier prep scripts (fuzzy search, Sleeper status refresh, chat transcript) |
 | `docs/SETUP.md` | Step-by-step install: deploy the web app, load the extension, confirm the ESPN selector on a mock |
 

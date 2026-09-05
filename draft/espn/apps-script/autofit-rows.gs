@@ -23,6 +23,9 @@ function onOpen() {
     .createMenu('Draft Board')
     .addItem('Auto-fit rows', 'autoFitRows')
     .addToUi();
+  // This is the project's single onOpen. If refresh-board.gs is pasted too, add
+  // its live Status/ADP menu here (guarded so this file still works without it).
+  if (typeof addRefreshMenu === 'function') addRefreshMenu();
   autoFitRows();   // fit on open so the board is right the moment it loads
 }
 

@@ -13,9 +13,13 @@ web app URL.
 2. **Extensions → Apps Script**. Paste `apps-script/mark-drafted.gs`. Add
    `apps-script/autofit-rows.gs` too (auto-fits row heights on open + a
    "Draft Board → Auto-fit rows" menu). If you use the fuzzy-search box, keep
-   `draft-board/draft_board_fuzzy_search.gs` as well — all three coexist in one
-   project. (Only paste one `onOpen`: if another file already defines one, move
-   the menu/auto-fit lines into it instead of declaring a second.)
+   `draft-board/draft_board_fuzzy_search.gs` as well. To pull live injury status
+   and market ADP into the board, also paste `apps-script/refresh-board.gs` (see
+   [§4](#4-live-status--adp-optional)) — all of them coexist in one project.
+   (Only paste one `onOpen`: `autofit-rows.gs` is the one that defines it, and it
+   already calls `refresh-board.gs`'s menu via a guarded `addRefreshMenu()`. If
+   another file defines its own `onOpen`, move the menu/auto-fit lines into a
+   single one instead of declaring a second.)
 3. In `CFG`, set `TOKEN` to any random string. Remember it for step 2 below.
 4. **Deploy → New deployment → Web app**
    - *Execute as*: **Me**
@@ -69,6 +73,41 @@ and update the selectors in `extension/content.js → SEL`.
 
 The manual panel is always there as a fallback — **type/paste a name** + Enter,
 or **select a name** on the page + **Alt+D** — so you're never blocked.
+
+## 4. Live Status + ADP (optional)
+
+`apps-script/refresh-board.gs` adds two **menu buttons** that pull from free
+public APIs and write live columns to the **right** of the board (columns P–S),
+so nothing re-uploads the file and no existing column, ranking, or format is
+touched. Both are **manual** — nothing runs on a timer.
+
+Paste `refresh-board.gs` into the same Apps Script project, Save, and reload the
+Sheet. A **Draft Board ↻** menu appears (built by the shared `onOpen`):
+
+- **Refresh Status (Sleeper)** → writes **Live Status** (col P): injury
+  designation + team, shaded **red** for OUT/IR/PUP/SUS/DOUBTFUL and **amber**
+  for QUESTIONABLE. This is the live version of `draft-board/sleeper_status_refresh.py`
+  — but it edits the Sheet **in place** instead of writing a downloaded `.xlsx`
+  copy, so the board you're reading stays current.
+- **Refresh ADP (FFC)** → writes **Live ADP** (col Q) from Fantasy Football
+  Calculator's full-PPR market ADP, plus **ADP Δ** (col R) and a **Trend** arrow
+  (col S, 🔼/🔽 when a player moves ≥3 spots). Each run also appends a dated
+  snapshot to a hidden **ADPHistory** tab.
+
+First run of each button authorizes external fetch + edit once.
+
+**About the 7-day trend.** The Δ diffs today's ADP against the snapshot closest
+to 7 days old. History only accumulates on the days you click **Refresh ADP**, so
+**run it a few times in the week before the draft** and the trend fills in. Until
+there's a snapshot ≥7 days old, the Δ header shows the real gap it found (e.g.
+`ADP Δ (3d)`) and unmatched-in-history players show `—`.
+
+**Scope, honestly.** Live columns cover offensive players/kickers only —
+**team defenses (DST)** show `—` (a defense has no injury, and its market ADP is
+low-signal). There is **no live ECR/rankings feed** here: Sleeper gives status
+not ranks, FFC gives ADP not ECR, and no free expert-consensus source is worth
+depending on — so your **Exp Rk (col J)** stays the ranking. The ADP Δ is an
+**annotation** ("the market moved"), never a re-sort of the board.
 
 ## Hiding drafted players
 
