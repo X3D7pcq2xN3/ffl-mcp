@@ -18,6 +18,7 @@
  * re-injects this script and already-marked players stay marked. */
 
 const api = (typeof browser !== 'undefined') ? browser : chrome;
+const FFLD_VERSION = 'v5-feed';   // bump on each change; shown on the panel + logged on load
 
 /* ---- ESPN selectors (confirmed against ESPN's live draft room) ----------
  * TWO signals, because "taken" and "mine" are different questions:
@@ -39,6 +40,38 @@ const SEL = {
   NAME: '.playerinfo__playername',                             // holds ONLY the name
   MINE: '.player-column.my-pick'                               // ESPN's own marker on YOUR picks
 };
+
+/* The Roster sidebar ("your team" panel). This is the reliable "mine" source:
+ * unlike the pool table it is NOT virtualized -- your ~15 players are always in
+ * the DOM -- so it still marks ★ for a player you had to SEARCH to draft, whose
+ * pool row scrolls out of the page the moment you clear the search box.
+ *   Row:  tr.Table__TR  (also used by other panels, so we filter by POS)
+ *   Name: .player-column[title="Full Name"]  (full name in the title attr; the
+ *         visible <a> text is abbreviated, e.g. "J. Gibbs")
+ *   Pos:  a [title="Position"] cell (QB/RB/.../BE) is on EVERY roster row --
+ *         starters and bench alike -- but not on the Pick Queue panel, so it
+ *         both excludes QUEUED (undrafted) players and, unlike a Bye-Week cell,
+ *         still matches bench (BE) picks whose bye may not render.
+ * Caveat: keep the roster panel's team dropdown on YOUR team (the default). If
+ * you switch it to view an opponent, their players would read as yours. */
+const ROSTER = {
+  ROW: 'tr.Table__TR',
+  NAME: '.player-column',
+  POS: '[title="Position"]'
+};
+
+/* The pick feed / draft log. Every team's pick posts here the instant it's made
+ * (newest at the bottom), so this catches OPPONENTS' picks with no scrolling --
+ * unlike the virtualized player pool, where a "Drafted" button only exists for
+ * rows you've scrolled into view. Feed entries are marked ☑ (taken); the roster
+ * scan still upgrades your own picks to ★, so we don't need to read the drafting
+ * team name here.
+ *   Item: li.pick-message__container  (one per pick)
+ *   Name: .playerinfo__playername     (e.g. "Steelers D/ST") */
+const FEED = {
+  ITEM: 'li.pick-message__container',
+  NAME: '.playerinfo__playername'
+};
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
 function normKey(s) {
@@ -56,6 +89,7 @@ function push(name, mine) {
   if (cur === 'mine') return;               // already the best state
   if (cur === 'taken' && !mine) return;     // no change
   sent.set(key, mine ? 'mine' : 'taken');
+  console.log('[fflDraft] send', mine ? '★' : '☑', name);
   api.runtime.sendMessage({ type: 'PICK', name: name, mine: !!mine }).then((r) => {
     if (!r)        setStatus(`? ${name} — no reply`, 'warn');
     else if (r.ok) { if (cur === undefined) bump(); setStatus(`${mine ? '★' : '☑'} ${name} (row ${r.row})`, 'ok'); }
@@ -86,6 +120,33 @@ function scanDrafted() {
     const name = nameIn(pc);
     if (name) push(name, true);             // ★ mine (wins over ☑)
   });
+  scanFeed();
+  scanRoster();
+}
+
+// TAKEN (scroll-proof): the pick feed lists every pick as it's made, so we catch
+// opponents' picks here without scrolling the pool. Mark ☑; scanRoster upgrades
+// any of these that are yours to ★.
+function scanFeed() {
+  document.querySelectorAll(FEED.ITEM).forEach((li) => {
+    const n = li.querySelector(FEED.NAME);
+    const name = n && (n.textContent || '').trim();
+    if (name && name.length >= 3) push(name, false);
+  });
+}
+
+// MINE (search-proof): read the Roster sidebar. It's never virtualized, so a
+// player you searched-and-drafted is still listed here after their pool row
+// scrolls away -- which is exactly the case where the pool my-pick marker
+// vanishes before it can upgrade ☑ to ★.
+function scanRoster() {
+  document.querySelectorAll(ROSTER.ROW).forEach((tr) => {
+    if (!tr.querySelector(ROSTER.POS)) return;          // not a roster row (skip Pick Queue etc.)
+    const pc = tr.querySelector(ROSTER.NAME);
+    const name = pc && (pc.getAttribute('title') || '').trim();
+    if (!name || /^empty$/i.test(name)) return;         // empty bench slot
+    push(name, true);                                    // ★ mine
+  });
 }
 function startAuto() {
   // Rows re-render as the table virtualizes and buttons/rosters change; a
@@ -107,11 +168,18 @@ function setStatus(msg, kind) {
 }
 function panel() {
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483647;width:250px;'
+  // Default to the LEFT so it never covers ESPN's picks pane / pick history
+  // (both on the right, with new picks at the bottom). Drag it anywhere by the
+  // title bar, or collapse it to just the title with the ⌄ button.
+  box.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147483647;width:250px;'
     + 'font:12px/1.4 system-ui,sans-serif;background:#fff;color:#202124;border:1px solid #dadce0;'
     + 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px;';
   box.innerHTML =
-      '<div style="font-weight:600;margin-bottom:6px">fflDraft <span style="font-weight:400;color:#5f6368">· ESPN → Sheet</span></div>'
+      '<div id="ffld-title" style="font-weight:600;margin-bottom:6px;cursor:move;display:flex;justify-content:space-between;align-items:center;user-select:none">'
+    + '  <span>fflDraft <span style="font-weight:400;color:#5f6368">· ' + FFLD_VERSION + '</span></span>'
+    + '  <span id="ffld-collapse" title="collapse / expand" style="color:#5f6368;cursor:pointer;padding:0 4px">⌄</span>'
+    + '</div>'
+    + '<div id="ffld-body">'
     + '<div id="ffld-status" style="min-height:16px;margin-bottom:6px">idle</div>'
     + '<div style="display:flex;gap:6px;margin-bottom:6px">'
     + '  <input id="ffld-name" placeholder="mark MY pick…" style="flex:1;min-width:0;padding:4px 6px;border:1px solid #dadce0;border-radius:6px">'
@@ -121,8 +189,32 @@ function panel() {
     + '  <span>marked: <b id="ffld-count">0</b></span>'
     + '  <span><a id="ffld-reset" href="#" style="color:#c5221f;text-decoration:none">reset board</a></span>'
     + '</div>'
-    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text as ★ mine</div>';
+    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text as ★ mine</div>'
+    + '</div>';
   document.body.appendChild(box);
+
+  // Drag by the title bar (switches anchoring to left/top on first move).
+  const title = box.querySelector('#ffld-title');
+  let drag = null;
+  title.addEventListener('pointerdown', (e) => {
+    if (e.target.id === 'ffld-collapse') return;
+    const r = box.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    box.style.right = box.style.bottom = 'auto';
+    box.style.left = r.left + 'px'; box.style.top = r.top + 'px';
+    title.setPointerCapture(e.pointerId);
+  });
+  title.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    box.style.left = (e.clientX - drag.dx) + 'px';
+    box.style.top  = (e.clientY - drag.dy) + 'px';
+  });
+  title.addEventListener('pointerup', (e) => { drag = null; title.releasePointerCapture(e.pointerId); });
+
+  // Collapse to just the title bar.
+  const body = box.querySelector('#ffld-body');
+  box.querySelector('#ffld-collapse').addEventListener('click', () => { body.hidden = !body.hidden; });
+
   elStatus = box.querySelector('#ffld-status');
   elCount  = box.querySelector('#ffld-count');
   const input = box.querySelector('#ffld-name');
@@ -153,4 +245,8 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-if (document.body) { panel(); startAuto(); }
+if (document.body) {
+  console.log('[fflDraft] content ' + FFLD_VERSION + ' loaded — roster scan active');
+  panel();
+  startAuto();
+}

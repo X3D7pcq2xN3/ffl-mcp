@@ -56,16 +56,37 @@ from opponents' ☑ picks.
 **One thing to keep set:** leave the player list on **"All"**, not "Available
 only" — filtered-out drafted rows leave the page and can't be read as taken.
 
+**Your own picks (★)** are read from the **Roster sidebar** (your team panel),
+not just the pool table. That's what makes ★ reliable even for a player you had
+to **search** for — searching filters the pool and the drafted row scrolls out
+of the page before its "mine" marker can be read, but the roster panel always
+lists your full team. **Keep the roster panel's team dropdown on your own team**
+(the default); if you switch it to view an opponent, their players would be read
+as yours.
+
 If ESPN changes its markup in a future season and auto goes quiet, re-inspect
 and update the selectors in `extension/content.js → SEL`.
 
 The manual panel is always there as a fallback — **type/paste a name** + Enter,
 or **select a name** on the page + **Alt+D** — so you're never blocked.
 
+## Hiding drafted players
+
+Two ways, both optional:
+
+- **Automatic (per pick).** `mark-drafted.gs` hides each player's row the moment
+  it's drafted (`CFG.HIDE_ON_MARK`, on by default), so the board shows only who's
+  still on the clock. `reset` un-hides everything.
+- **Manual toggle (O1).** Paste `draft-board/draft_board_fuzzy_search.gs`, then run
+  `setupDraftedToggle()` once from the Apps Script editor to drop a checkbox in
+  **cell O1** of the Draft Board. **Check it to hide every drafted row (☑ or ★)
+  at once; uncheck to show them all again.** (It shares the same one-time
+  `onEdit` as the A1 fuzzy-search box.)
+
 ## Resetting between mocks
 
 Click **reset board** in the panel (or run `resetDrafted()` from the Apps Script
-editor). It clears the strikethroughs.
+editor). It clears the strikethroughs and un-hides every row.
 
 ## Notes
 
