@@ -18,6 +18,7 @@
  * re-injects this script and already-marked players stay marked. */
 
 const api = (typeof browser !== 'undefined') ? browser : chrome;
+const FFLD_VERSION = 'v4-roster';   // bump on each change; shown on the panel + logged on load
 
 /* ---- ESPN selectors (confirmed against ESPN's live draft room) ----------
  * TWO signals, because "taken" and "mine" are different questions:
@@ -75,6 +76,7 @@ function push(name, mine) {
   if (cur === 'mine') return;               // already the best state
   if (cur === 'taken' && !mine) return;     // no change
   sent.set(key, mine ? 'mine' : 'taken');
+  console.log('[fflDraft] send', mine ? '★' : '☑', name);
   api.runtime.sendMessage({ type: 'PICK', name: name, mine: !!mine }).then((r) => {
     if (!r)        setStatus(`? ${name} — no reply`, 'warn');
     else if (r.ok) { if (cur === undefined) bump(); setStatus(`${mine ? '★' : '☑'} ${name} (row ${r.row})`, 'ok'); }
@@ -145,7 +147,7 @@ function panel() {
     + 'font:12px/1.4 system-ui,sans-serif;background:#fff;color:#202124;border:1px solid #dadce0;'
     + 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px;';
   box.innerHTML =
-      '<div style="font-weight:600;margin-bottom:6px">fflDraft <span style="font-weight:400;color:#5f6368">· ESPN → Sheet</span></div>'
+      '<div style="font-weight:600;margin-bottom:6px">fflDraft <span style="font-weight:400;color:#5f6368">· ' + FFLD_VERSION + '</span></div>'
     + '<div id="ffld-status" style="min-height:16px;margin-bottom:6px">idle</div>'
     + '<div style="display:flex;gap:6px;margin-bottom:6px">'
     + '  <input id="ffld-name" placeholder="mark MY pick…" style="flex:1;min-width:0;padding:4px 6px;border:1px solid #dadce0;border-radius:6px">'
@@ -187,4 +189,8 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-if (document.body) { panel(); startAuto(); }
+if (document.body) {
+  console.log('[fflDraft] content ' + FFLD_VERSION + ' loaded — roster scan active');
+  panel();
+  startAuto();
+}
