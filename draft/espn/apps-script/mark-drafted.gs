@@ -33,13 +33,20 @@
 var CFG = {
   SHEET: 'Draft Board',
   FIRST_ROW: 3,          // first player row
-  LAST_ROW: 180,         // last player row
+  LAST_ROW: 252,         // last player row (expandBoard() grew the list to 252)
   NAME_COL: 4,           // column D = Player (used to find the row)
   DRAFTED_COL: 1,        // column A = the board's Drafted dropdown
   MINE: '★',             // my pick  -> flows to the My Team + Byes tab
   TAKEN: '☑',            // drafted by another team (unavailable, not mine)
   UNDRAFTED: '☐',        // still available
   TOKEN: 'CHANGE_ME',    // must equal the extension's token
+  // Hide the row the instant a player is marked, so the board shows only who's
+  // still available -- live, no manual re-filter. A basic Sheets Filter can't
+  // do this (it snapshots values and has to be reapplied after every pick, and
+  // onEdit never fires on a script setValue), so the web app hides the row
+  // itself. resetDrafted() unhides everything. Set false to keep every row
+  // visible and rely on the strikethrough alone.
+  HIDE_ON_MARK: true,
   // A pick of yours that isn't on the board's player list still has to reach
   // the My Team tab, so it's captured here. Column Q was verified empty on the
   // My Team tab (the bye-week table occupies H:N; A:E is the roster spill), so
@@ -167,7 +174,10 @@ function markDrafted(name, mine) {
   var cell = ix.sh.getRange(row, CFG.DRAFTED_COL);
   var mark = mine ? CFG.MINE : CFG.TAKEN;
   if (!(mark === CFG.TAKEN && cell.getValue() === CFG.MINE)) cell.setValue(mark);
-  return { ok: true, row: row, match: how, name: name, mark: mark };
+  // Drop the drafted row out of view so the board is only players still on the
+  // clock. Reversible -- resetDrafted() shows every row again for the next mock.
+  if (CFG.HIDE_ON_MARK) ix.sh.hideRows(row);
+  return { ok: true, row: row, match: how, name: name, mark: mark, hidden: !!CFG.HIDE_ON_MARK };
 }
 
 // Append an off-board pick of yours to the My Team overflow list (deduped), so
@@ -194,6 +204,7 @@ function resetDrafted() {
   var sh = SpreadsheetApp.getActive().getSheetByName(CFG.SHEET);
   var n = CFG.LAST_ROW - CFG.FIRST_ROW + 1;
   sh.getRange(CFG.FIRST_ROW, CFG.DRAFTED_COL, n, 1).setValue(CFG.UNDRAFTED);
+  sh.showRows(CFG.FIRST_ROW, n);   // bring back any rows hidden as picks came in
   var ov = SpreadsheetApp.getActive().getSheetByName(CFG.OVERFLOW_SHEET);
   if (ov) ov.getRange(CFG.OVERFLOW_FIRST, CFG.OVERFLOW_COL,
                       CFG.OVERFLOW_LAST - CFG.OVERFLOW_FIRST + 1, 1).clearContent();
