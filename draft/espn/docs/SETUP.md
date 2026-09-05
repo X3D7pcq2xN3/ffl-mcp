@@ -62,10 +62,23 @@ and update the selectors in `extension/content.js → SEL`.
 The manual panel is always there as a fallback — **type/paste a name** + Enter,
 or **select a name** on the page + **Alt+D** — so you're never blocked.
 
+## Hiding drafted players
+
+Two ways, both optional:
+
+- **Automatic (per pick).** `mark-drafted.gs` hides each player's row the moment
+  it's drafted (`CFG.HIDE_ON_MARK`, on by default), so the board shows only who's
+  still on the clock. `reset` un-hides everything.
+- **Manual toggle (O1).** Paste `draft-board/draft_board_fuzzy_search.gs`, then run
+  `setupDraftedToggle()` once from the Apps Script editor to drop a checkbox in
+  **cell O1** of the Draft Board. **Check it to hide every drafted row (☑ or ★)
+  at once; uncheck to show them all again.** (It shares the same one-time
+  `onEdit` as the A1 fuzzy-search box.)
+
 ## Resetting between mocks
 
 Click **reset board** in the panel (or run `resetDrafted()` from the Apps Script
-editor). It clears the strikethroughs.
+editor). It clears the strikethroughs and un-hides every row.
 
 ## Notes
 
