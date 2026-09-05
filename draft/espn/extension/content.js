@@ -39,6 +39,24 @@ const SEL = {
   NAME: '.playerinfo__playername',                             // holds ONLY the name
   MINE: '.player-column.my-pick'                               // ESPN's own marker on YOUR picks
 };
+
+/* The Roster sidebar ("your team" panel). This is the reliable "mine" source:
+ * unlike the pool table it is NOT virtualized -- your ~15 players are always in
+ * the DOM -- so it still marks ★ for a player you had to SEARCH to draft, whose
+ * pool row scrolls out of the page the moment you clear the search box.
+ *   Row:  tr.Table__TR  (also used by other panels, so we filter by BYE)
+ *   Name: .player-column[title="Full Name"]  (full name in the title attr; the
+ *         visible <a> text is abbreviated, e.g. "J. Gibbs")
+ *   Bye:  a [title="Bye Week"] cell is present on roster rows but not on the
+ *         Pick Queue panel -- that's how we avoid marking QUEUED (undrafted)
+ *         players as picks.
+ * Caveat: keep the roster panel's team dropdown on YOUR team (the default). If
+ * you switch it to view an opponent, their players would read as yours. */
+const ROSTER = {
+  ROW: 'tr.Table__TR',
+  NAME: '.player-column',
+  BYE: '[title="Bye Week"]'
+};
 const RECONCILE_MS = 2500;   // periodic re-scan catches button flips + virtualized rows
 
 function normKey(s) {
@@ -85,6 +103,21 @@ function scanDrafted() {
   document.querySelectorAll(SEL.MINE).forEach((pc) => {
     const name = nameIn(pc);
     if (name) push(name, true);             // ★ mine (wins over ☑)
+  });
+  scanRoster();
+}
+
+// MINE (search-proof): read the Roster sidebar. It's never virtualized, so a
+// player you searched-and-drafted is still listed here after their pool row
+// scrolls away -- which is exactly the case where the pool my-pick marker
+// vanishes before it can upgrade ☑ to ★.
+function scanRoster() {
+  document.querySelectorAll(ROSTER.ROW).forEach((tr) => {
+    if (!tr.querySelector(ROSTER.BYE)) return;          // not a roster row (skip Pick Queue etc.)
+    const pc = tr.querySelector(ROSTER.NAME);
+    const name = pc && (pc.getAttribute('title') || '').trim();
+    if (!name || /^empty$/i.test(name)) return;         // empty bench slot
+    push(name, true);                                    // ★ mine
   });
 }
 function startAuto() {

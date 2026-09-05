@@ -56,6 +56,14 @@ from opponents' ☑ picks.
 **One thing to keep set:** leave the player list on **"All"**, not "Available
 only" — filtered-out drafted rows leave the page and can't be read as taken.
 
+**Your own picks (★)** are read from the **Roster sidebar** (your team panel),
+not just the pool table. That's what makes ★ reliable even for a player you had
+to **search** for — searching filters the pool and the drafted row scrolls out
+of the page before its "mine" marker can be read, but the roster panel always
+lists your full team. **Keep the roster panel's team dropdown on your own team**
+(the default); if you switch it to view an opponent, their players would be read
+as yours.
+
 If ESPN changes its markup in a future season and auto goes quiet, re-inspect
 and update the selectors in `extension/content.js → SEL`.
 
