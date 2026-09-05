@@ -40,13 +40,15 @@ var CFG = {
   TAKEN: '☑',            // drafted by another team (unavailable, not mine)
   UNDRAFTED: '☐',        // still available
   TOKEN: 'CHANGE_ME',    // must equal the extension's token
-  // Hide the row the instant a player is marked, so the board shows only who's
-  // still available -- live, no manual re-filter. A basic Sheets Filter can't
-  // do this (it snapshots values and has to be reapplied after every pick, and
-  // onEdit never fires on a script setValue), so the web app hides the row
-  // itself. resetDrafted() unhides everything. Set false to keep every row
-  // visible and rely on the strikethrough alone.
-  HIDE_ON_MARK: true,
+  // Live auto-hide is gated on the O1 checkbox (setupDraftedToggle). When O1 is
+  // checked, each pick's row is hidden the instant it's marked, so the board
+  // shows only who's still available -- no manual re-filter (a basic Sheets
+  // Filter can't do this: it snapshots values, and onEdit never fires on a
+  // script setValue). Uncheck O1 and new picks stay visible (struck through);
+  // the O1 toggle's own onEdit shows/hides the whole board on click.
+  // resetDrafted() always unhides everything.
+  TOGGLE_ROW: 1,         // O1: the "hide drafted" checkbox on the Draft Board
+  TOGGLE_COL: 15,        // column O
   // A pick of yours that isn't on the board's player list still has to reach
   // the My Team tab, so it's captured here. Column Q was verified empty on the
   // My Team tab (the bye-week table occupies H:N; A:E is the roster spill), so
@@ -149,6 +151,12 @@ function _index() {
   return { sh: sh, exact: exact, fi: fi, dst: dst };
 }
 
+// The O1 "hide drafted" checkbox is the master switch for live auto-hide.
+// Returns true only when it's checked (an unset/missing checkbox reads falsy).
+function _hideOn(sh) {
+  return sh.getRange(CFG.TOGGLE_ROW, CFG.TOGGLE_COL).getValue() === true;
+}
+
 function markDrafted(name, mine) {
   if (!name) return { ok: false, error: 'no name' };
   var ix = _index();
@@ -174,10 +182,12 @@ function markDrafted(name, mine) {
   var cell = ix.sh.getRange(row, CFG.DRAFTED_COL);
   var mark = mine ? CFG.MINE : CFG.TAKEN;
   if (!(mark === CFG.TAKEN && cell.getValue() === CFG.MINE)) cell.setValue(mark);
-  // Drop the drafted row out of view so the board is only players still on the
-  // clock. Reversible -- resetDrafted() shows every row again for the next mock.
-  if (CFG.HIDE_ON_MARK) ix.sh.hideRows(row);
-  return { ok: true, row: row, match: how, name: name, mark: mark, hidden: !!CFG.HIDE_ON_MARK };
+  // Drop the drafted row out of view when the O1 "hide drafted" toggle is on, so
+  // the board is only players still on the clock. Reversible -- unchecking O1
+  // (or resetDrafted()) shows every row again.
+  var hide = _hideOn(ix.sh);
+  if (hide) ix.sh.hideRows(row);
+  return { ok: true, row: row, match: how, name: name, mark: mark, hidden: hide };
 }
 
 // Append an off-board pick of yours to the My Team overflow list (deduped), so
