@@ -143,11 +143,18 @@ function setStatus(msg, kind) {
 }
 function panel() {
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483647;width:250px;'
+  // Default to the LEFT so it never covers ESPN's picks pane / pick history
+  // (both on the right, with new picks at the bottom). Drag it anywhere by the
+  // title bar, or collapse it to just the title with the ⌄ button.
+  box.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147483647;width:250px;'
     + 'font:12px/1.4 system-ui,sans-serif;background:#fff;color:#202124;border:1px solid #dadce0;'
     + 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px;';
   box.innerHTML =
-      '<div style="font-weight:600;margin-bottom:6px">fflDraft <span style="font-weight:400;color:#5f6368">· ' + FFLD_VERSION + '</span></div>'
+      '<div id="ffld-title" style="font-weight:600;margin-bottom:6px;cursor:move;display:flex;justify-content:space-between;align-items:center;user-select:none">'
+    + '  <span>fflDraft <span style="font-weight:400;color:#5f6368">· ' + FFLD_VERSION + '</span></span>'
+    + '  <span id="ffld-collapse" title="collapse / expand" style="color:#5f6368;cursor:pointer;padding:0 4px">⌄</span>'
+    + '</div>'
+    + '<div id="ffld-body">'
     + '<div id="ffld-status" style="min-height:16px;margin-bottom:6px">idle</div>'
     + '<div style="display:flex;gap:6px;margin-bottom:6px">'
     + '  <input id="ffld-name" placeholder="mark MY pick…" style="flex:1;min-width:0;padding:4px 6px;border:1px solid #dadce0;border-radius:6px">'
@@ -157,8 +164,32 @@ function panel() {
     + '  <span>marked: <b id="ffld-count">0</b></span>'
     + '  <span><a id="ffld-reset" href="#" style="color:#c5221f;text-decoration:none">reset board</a></span>'
     + '</div>'
-    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text as ★ mine</div>';
+    + '<div style="margin-top:6px;color:#9aa0a6;font-size:11px">Alt+D marks selected text as ★ mine</div>'
+    + '</div>';
   document.body.appendChild(box);
+
+  // Drag by the title bar (switches anchoring to left/top on first move).
+  const title = box.querySelector('#ffld-title');
+  let drag = null;
+  title.addEventListener('pointerdown', (e) => {
+    if (e.target.id === 'ffld-collapse') return;
+    const r = box.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    box.style.right = box.style.bottom = 'auto';
+    box.style.left = r.left + 'px'; box.style.top = r.top + 'px';
+    title.setPointerCapture(e.pointerId);
+  });
+  title.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    box.style.left = (e.clientX - drag.dx) + 'px';
+    box.style.top  = (e.clientY - drag.dy) + 'px';
+  });
+  title.addEventListener('pointerup', (e) => { drag = null; title.releasePointerCapture(e.pointerId); });
+
+  // Collapse to just the title bar.
+  const body = box.querySelector('#ffld-body');
+  box.querySelector('#ffld-collapse').addEventListener('click', () => { body.hidden = !body.hidden; });
+
   elStatus = box.querySelector('#ffld-status');
   elCount  = box.querySelector('#ffld-count');
   const input = box.querySelector('#ffld-name');
